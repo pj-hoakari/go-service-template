@@ -12,3 +12,6 @@ Dockerfile
 proto
 buf.yaml
 buf.gen.server.yaml
+
+.task
+Taskfile.yml

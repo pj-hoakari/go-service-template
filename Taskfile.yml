@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: "3"
+
+tasks:
+    proto:
+        desc: Lint proto and regenerate code.
+        cmds:
+            - task: proto:lint
+            - task: proto:gen:server
+
+    proto:lint:
+        desc: Lint proto.
+        cmds:
+            - buf lint
+
+    proto:gen:server:
+        desc: Regenerate connect-go server code from proto.
+        cmds:
+            - buf generate --template buf.gen.server.yaml
+        sources:
+            - "proto/**/*.proto"
+            - buf.yaml
+            - buf.gen.server.yaml
+        generates:
+            - "gen/**/*"
