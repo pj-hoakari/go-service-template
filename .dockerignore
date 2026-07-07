@@ -1,0 +1,10 @@
+.git
+.gitignore
+.github
+
+mise.toml
+
+Dockerfile
+.dockerignore
+
+*.md
