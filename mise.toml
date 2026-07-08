@@ -1,4 +1,4 @@
 [tools]
-buf = "latest"
+buf = "1.70.0"
 go = "1.26"
 task = "latest"
