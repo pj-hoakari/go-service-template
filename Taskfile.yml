@@ -24,3 +24,15 @@ tasks:
             - buf.gen.go.yaml
         generates:
             - "gen/**/*"
+
+    proto:gen:es:
+        desc: Regenerate connect-es code from proto.
+        cmds:
+            - buf generate --template buf.gen.es.yaml
+        sources:
+            - "proto/**/*.proto"
+            - buf.yaml
+            - buf.gen.es.yaml
+            - clients/connect-es/package.json
+        generates:
+            - "clients/connect-es/gen/**/*"
