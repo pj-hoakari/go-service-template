@@ -1,4 +1,4 @@
-name: proto-gen-check
+name: Check Generated Code
 
 on:
     pull_request:

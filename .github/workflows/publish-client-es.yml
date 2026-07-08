@@ -1,4 +1,4 @@
-name: publish-client-es
+name: Publish connect-es Client
 
 on:
     release:
