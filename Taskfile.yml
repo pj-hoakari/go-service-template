@@ -4,23 +4,23 @@ version: "3"
 
 tasks:
     proto:
-        desc: Lint proto and regenerate code.
+        desc: Lint proto and regenerate connect-go code for development.
         cmds:
             - task: proto:lint
-            - task: proto:gen:server
+            - task: proto:gen:go
 
     proto:lint:
         desc: Lint proto.
         cmds:
             - buf lint
 
-    proto:gen:server:
-        desc: Regenerate connect-go server code from proto.
+    proto:gen:go:
+        desc: Regenerate connect-go code from proto.
         cmds:
-            - buf generate --template buf.gen.server.yaml
+            - buf generate --template buf.gen.go.yaml
         sources:
             - "proto/**/*.proto"
             - buf.yaml
-            - buf.gen.server.yaml
+            - buf.gen.go.yaml
         generates:
             - "gen/**/*"
