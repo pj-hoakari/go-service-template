@@ -9,6 +9,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY cmd ./cmd
 COPY internal ./internal
+COPY gen ./gen
 
 ARG TARGETOS
 ARG TARGETARCH
