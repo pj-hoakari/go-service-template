@@ -4,9 +4,6 @@ on:
     pull_request:
       paths:
         - '.github/workflows/**'
-    push:
-      paths:
-        - '.github/workflows/**'
 
 permissions:
     contents: read
