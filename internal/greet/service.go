@@ -15,7 +15,9 @@ type Service struct {
 }
 
 func NewService() *Service {
-	return &Service{}
+	return &Service{
+		UnimplementedGreetServiceHandler: greetv1connect.UnimplementedGreetServiceHandler{},
+	}
 }
 
 func (s *Service) Greet(_ context.Context, req *connect.Request[greetv1.GreetRequest]) (*connect.Response[greetv1.GreetResponse], error) {
@@ -27,5 +29,6 @@ func (s *Service) Greet(_ context.Context, req *connect.Request[greetv1.GreetReq
 	res := connect.NewResponse(&greetv1.GreetResponse{
 		Greeting: fmt.Sprintf("Hello, %s!", name),
 	})
+
 	return res, nil
 }
