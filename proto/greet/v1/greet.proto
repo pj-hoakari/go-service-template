@@ -1,9 +1,15 @@
 syntax = "proto3";
 
+import "authz/v1/authz.proto";
 package greet.v1;
 
 service GreetService {
-  rpc Greet(GreetRequest) returns (GreetResponse) {}
+  rpc Greet(GreetRequest) returns (GreetResponse) {
+    option (authz.v1.auth_policy) = {
+    level: AUTH_LEVEL_AUTHENTICATED
+    required_scopes: "greeting.read"
+    };
+  }
 }
 
 message GreetRequest {
