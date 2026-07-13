@@ -12,7 +12,10 @@ func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
-	path, handler := greetv1connect.NewGreetServiceHandler(greet.NewService())
+	path, handler := greetv1connect.NewGreetServiceHandlerWithAuthz(
+		greet.NewService(),
+		newExampleGreetAuthzVerifier(),
+	)
 	mux.Handle(path, handler)
 
 	return mux
