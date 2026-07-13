@@ -5,6 +5,7 @@ buf = "1.71.0"
 go = "1.26"
 golangci-lint = "v2.12.2"
 lefthook = "latest"
+oras = "latest"
 task = "latest"
 
 [hooks]

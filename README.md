@@ -120,7 +120,7 @@ Authorization: Bearer example-greet-token
 
 ```bash
 # 出力先ディレクトリに proto を展開（ディレクトリ構造が復元される）
-oras pull ghcr.io/pj-hoakari/go-service-template/proto:latest -o proto
+oras pull ghcr.io/pj-hoakari/go-service-template-proto:latest -o proto
 
 # 例: proto/greet/v1/greet.proto として展開される
 ```
