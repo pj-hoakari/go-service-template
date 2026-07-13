@@ -81,7 +81,8 @@ func (AuthLevel) EnumDescriptor() ([]byte, []int) {
 	return file_authz_v1_authz_proto_rawDescGZIP(), []int{0}
 }
 
-// AuthPolicy is an authorization policy that may be associated with an RPC.
+// AuthPolicy is an authorization policy that may be associated with an RPC or
+// a service. A method-level policy takes precedence over its service policy.
 // required_scopes is intentionally declarative: a verifier decides how scopes
 // are represented and enforced.
 type AuthPolicy struct {
@@ -138,6 +139,14 @@ func (x *AuthPolicy) GetRequiredScopes() []string {
 
 var file_authz_v1_authz_proto_extTypes = []protoimpl.ExtensionInfo{
 	{
+		ExtendedType:  (*descriptorpb.FileOptions)(nil),
+		ExtensionType: (*uint32)(nil),
+		Field:         50002,
+		Name:          "authz.v1.authz_proto_version",
+		Tag:           "varint,50002,opt,name=authz_proto_version",
+		Filename:      "authz/v1/authz.proto",
+	},
+	{
 		ExtendedType:  (*descriptorpb.MethodOptions)(nil),
 		ExtensionType: (*AuthPolicy)(nil),
 		Field:         50001,
@@ -145,12 +154,32 @@ var file_authz_v1_authz_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "bytes,50001,opt,name=auth_policy",
 		Filename:      "authz/v1/authz.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.ServiceOptions)(nil),
+		ExtensionType: (*AuthPolicy)(nil),
+		Field:         50001,
+		Name:          "authz.v1.service_auth_policy",
+		Tag:           "bytes,50001,opt,name=service_auth_policy",
+		Filename:      "authz/v1/authz.proto",
+	},
 }
+
+// Extension fields to descriptorpb.FileOptions.
+var (
+	// optional uint32 authz_proto_version = 50002;
+	E_AuthzProtoVersion = &file_authz_v1_authz_proto_extTypes[0]
+)
 
 // Extension fields to descriptorpb.MethodOptions.
 var (
 	// optional authz.v1.AuthPolicy auth_policy = 50001;
-	E_AuthPolicy = &file_authz_v1_authz_proto_extTypes[0]
+	E_AuthPolicy = &file_authz_v1_authz_proto_extTypes[1]
+)
+
+// Extension fields to descriptorpb.ServiceOptions.
+var (
+	// optional authz.v1.AuthPolicy service_auth_policy = 50001;
+	E_ServiceAuthPolicy = &file_authz_v1_authz_proto_extTypes[2]
 )
 
 var File_authz_v1_authz_proto protoreflect.FileDescriptor
@@ -166,9 +195,11 @@ const file_authz_v1_authz_proto_rawDesc = "" +
 	"\x16AUTH_LEVEL_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11AUTH_LEVEL_PUBLIC\x10\x01\x12\x1c\n" +
 	"\x18AUTH_LEVEL_AUTHENTICATED\x10\x02\x12\x17\n" +
-	"\x13AUTH_LEVEL_INTERNAL\x10\x03:W\n" +
+	"\x13AUTH_LEVEL_INTERNAL\x10\x03:N\n" +
+	"\x13authz_proto_version\x12\x1c.google.protobuf.FileOptions\x18҆\x03 \x01(\rR\x11authzProtoVersion:W\n" +
 	"\vauth_policy\x12\x1e.google.protobuf.MethodOptions\x18ц\x03 \x01(\v2\x14.authz.v1.AuthPolicyR\n" +
-	"authPolicyB\x9b\x01\n" +
+	"authPolicy:g\n" +
+	"\x13service_auth_policy\x12\x1f.google.protobuf.ServiceOptions\x18ц\x03 \x01(\v2\x14.authz.v1.AuthPolicyR\x11serviceAuthPolicyB\x9f\x01\x90\xb5\x18\x01\n" +
 	"\fcom.authz.v1B\n" +
 	"AuthzProtoP\x01Z>github.com/pj-hoakari/go-service-template/gen/authz/v1;authzv1\xa2\x02\x03AXX\xaa\x02\bAuthz.V1\xca\x02\bAuthz\\V1\xe2\x02\x14Authz\\V1\\GPBMetadata\xea\x02\tAuthz::V1b\x06proto3"
 
@@ -187,18 +218,23 @@ func file_authz_v1_authz_proto_rawDescGZIP() []byte {
 var file_authz_v1_authz_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
 var file_authz_v1_authz_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_authz_v1_authz_proto_goTypes = []any{
-	(AuthLevel)(0),                     // 0: authz.v1.AuthLevel
-	(*AuthPolicy)(nil),                 // 1: authz.v1.AuthPolicy
-	(*descriptorpb.MethodOptions)(nil), // 2: google.protobuf.MethodOptions
+	(AuthLevel)(0),                      // 0: authz.v1.AuthLevel
+	(*AuthPolicy)(nil),                  // 1: authz.v1.AuthPolicy
+	(*descriptorpb.FileOptions)(nil),    // 2: google.protobuf.FileOptions
+	(*descriptorpb.MethodOptions)(nil),  // 3: google.protobuf.MethodOptions
+	(*descriptorpb.ServiceOptions)(nil), // 4: google.protobuf.ServiceOptions
 }
 var file_authz_v1_authz_proto_depIdxs = []int32{
 	0, // 0: authz.v1.AuthPolicy.level:type_name -> authz.v1.AuthLevel
-	2, // 1: authz.v1.auth_policy:extendee -> google.protobuf.MethodOptions
-	1, // 2: authz.v1.auth_policy:type_name -> authz.v1.AuthPolicy
-	3, // [3:3] is the sub-list for method output_type
-	3, // [3:3] is the sub-list for method input_type
-	2, // [2:3] is the sub-list for extension type_name
-	1, // [1:2] is the sub-list for extension extendee
+	2, // 1: authz.v1.authz_proto_version:extendee -> google.protobuf.FileOptions
+	3, // 2: authz.v1.auth_policy:extendee -> google.protobuf.MethodOptions
+	4, // 3: authz.v1.service_auth_policy:extendee -> google.protobuf.ServiceOptions
+	1, // 4: authz.v1.auth_policy:type_name -> authz.v1.AuthPolicy
+	1, // 5: authz.v1.service_auth_policy:type_name -> authz.v1.AuthPolicy
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	4, // [4:6] is the sub-list for extension type_name
+	1, // [1:4] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
 }
 
@@ -214,7 +250,7 @@ func file_authz_v1_authz_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_authz_v1_authz_proto_rawDesc), len(file_authz_v1_authz_proto_rawDesc)),
 			NumEnums:      1,
 			NumMessages:   1,
-			NumExtensions: 1,
+			NumExtensions: 3,
 			NumServices:   0,
 		},
 		GoTypes:           file_authz_v1_authz_proto_goTypes,

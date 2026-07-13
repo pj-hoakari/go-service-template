@@ -118,9 +118,9 @@ const file_greet_v1_greet_proto_rawDesc = "" +
 	"\fGreetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"+\n" +
 	"\rGreetResponse\x12\x1a\n" +
-	"\bgreeting\x18\x01 \x01(\tR\bgreeting2_\n" +
-	"\fGreetService\x12O\n" +
-	"\x05Greet\x12\x16.greet.v1.GreetRequest\x1a\x17.greet.v1.GreetResponse\"\x15\x8a\xb5\x18\x11\b\x02\x12\rgreeting.readB\x9b\x01\n" +
+	"\bgreeting\x18\x01 \x01(\tR\bgreeting2a\n" +
+	"\fGreetService\x12:\n" +
+	"\x05Greet\x12\x16.greet.v1.GreetRequest\x1a\x17.greet.v1.GreetResponse\"\x00\x1a\x15\x8a\xb5\x18\x11\b\x02\x12\rgreeting.readB\x9b\x01\n" +
 	"\fcom.greet.v1B\n" +
 	"GreetProtoP\x01Z>github.com/pj-hoakari/go-service-template/gen/greet/v1;greetv1\xa2\x02\x03GXX\xaa\x02\bGreet.V1\xca\x02\bGreet\\V1\xe2\x02\x14Greet\\V1\\GPBMetadata\xea\x02\tGreet::V1b\x06proto3"
 

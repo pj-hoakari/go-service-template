@@ -4,12 +4,11 @@ import "authz/v1/authz.proto";
 package greet.v1;
 
 service GreetService {
-  rpc Greet(GreetRequest) returns (GreetResponse) {
-    option (authz.v1.auth_policy) = {
+  option (authz.v1.service_auth_policy) = {
     level: AUTH_LEVEL_AUTHENTICATED
     required_scopes: "greeting.read"
-    };
-  }
+  };
+  rpc Greet(GreetRequest) returns (GreetResponse) {}
 }
 
 message GreetRequest {
