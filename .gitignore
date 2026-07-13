@@ -35,3 +35,6 @@ node_modules/
 # .vscode/
 
 .task
+
+# Materialized by the protoc-gen-authz-go schema include task.
+/proto/authz
