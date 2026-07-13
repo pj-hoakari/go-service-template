@@ -9,23 +9,22 @@ tasks:
             - task: proto:lint
             - task: proto:gen:go
 
-    proto:authz-link:
-      cmds:
-        - mkdir -p proto
-        - rm -f proto/authz
-        - ln -s "$(XDG_CACHE_HOME=/tmp go tool protoc-gen-authz-go --proto-path)/authz" proto/authz
+    proto:write-authz:
+        desc: Write authz proto to proto directory.
+        cmds:
+          - go tool protoc-gen-authz-go --write-proto proto
 
     proto:lint:
         desc: Lint proto.
         deps:
-          - proto:authz-link
+          - proto:write-authz
         cmds:
             - buf lint
 
     proto:gen:go:
         desc: Regenerate connect-go code from proto.
         deps:
-          - proto:authz-link
+          - proto:write-authz
         cmds:
             - buf generate --template buf.gen.go.yaml
         sources:
@@ -38,7 +37,7 @@ tasks:
     proto:gen:es:
         desc: Regenerate connect-es code from proto.
         deps:
-          - proto:authz-link
+          - proto:write-authz
         cmds:
             - buf generate --template buf.gen.es.yaml
         sources:

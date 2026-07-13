@@ -13,4 +13,4 @@ require (
 	google.golang.org/protobuf v1.36.11
 )
 
-require github.com/pj-hoakari/protoc-gen-authz-go v0.0.0-20260713054412-02c94bf5b26e // indirect
+require github.com/pj-hoakari/protoc-gen-authz-go v0.1.0 // indirect
