@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-import "authz/v1/authz.proto";
+import "authz/v1/options.proto";
+
 package greet.v1;
 
 service GreetService {

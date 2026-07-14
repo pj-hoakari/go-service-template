@@ -7,7 +7,7 @@
 package greetv1
 
 import (
-	_ "github.com/pj-hoakari/go-service-template/gen/authz/v1"
+	_ "github.com/pj-hoakari/protoc-gen-authz-go/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -114,7 +114,7 @@ var File_greet_v1_greet_proto protoreflect.FileDescriptor
 
 const file_greet_v1_greet_proto_rawDesc = "" +
 	"\n" +
-	"\x14greet/v1/greet.proto\x12\bgreet.v1\x1a\x14authz/v1/authz.proto\"\"\n" +
+	"\x14greet/v1/greet.proto\x12\bgreet.v1\x1a\x16authz/v1/options.proto\"\"\n" +
 	"\fGreetRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"+\n" +
 	"\rGreetResponse\x12\x1a\n" +
