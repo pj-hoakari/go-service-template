@@ -127,6 +127,7 @@ go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 - 注入は fail-closed: 全サービスは原則テナント必須のため、`token_use` が `access` かつ `tenant_id` が非空のトークンを持たないリクエストは `CodeUnauthenticated` で拒否する
 - テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、PUBLIC エンドポイント等）を持つサービスは、`tenantIDNotRequired` に procedure 名を列挙して除外する
 - ハンドラ / ユースケースは `tenantctx.TenantPublicIDFromContext(ctx)` で参照する。テナント対象操作の認可には `tenantctx.Ensure`（fail-closed）、永続化から復元したモデルの防衛的チェックには `tenantctx.VerifyOwnership`（fail-open）を使う
+- 参照は `internal/tenantctx` を直接 import する。
 
 ---
 
