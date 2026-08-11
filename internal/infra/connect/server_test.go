@@ -40,7 +40,7 @@ func newTestJWKSValidator(t *testing.T, keys jwtgen.JWKS) *jwks.JWKSValidator {
 func newTestHandlerWithJWKS(t *testing.T, keys jwtgen.JWKS) http.Handler {
 	t.Helper()
 
-	return NewHandlerWithValidator(application.NewGreetService(), newTestJWKSValidator(t, keys))
+	return NewHandlerWithValidator(application.NewGreetService(nopGreetingRepository{}), newTestJWKSValidator(t, keys))
 }
 
 // mintInternalJWT issues an internal JWT signed by a fresh key, returning the

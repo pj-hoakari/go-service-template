@@ -13,7 +13,7 @@ import (
 func TestServiceGreet(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(application.NewGreetService())
+	service := NewService(application.NewGreetService(nopGreetingRepository{}))
 
 	res, err := service.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"}))
 	if err != nil {
@@ -28,7 +28,7 @@ func TestServiceGreet(t *testing.T) {
 func TestServiceGreetRejectsMissingName(t *testing.T) {
 	t.Parallel()
 
-	service := NewService(application.NewGreetService())
+	service := NewService(application.NewGreetService(nopGreetingRepository{}))
 
 	_, err := service.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{}))
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeInvalidArgument; got != want {
