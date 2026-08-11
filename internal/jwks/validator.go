@@ -39,6 +39,10 @@ type InternalJWTClaims struct {
 	TokenUse string `json:"token_use"`
 	Scope    string `json:"scope"`
 	ClientID string `json:"client_id"`
+	// SourceJTI is carried in the src_jti claim: the jti of the external
+	// token the API Gateway exchanged for this internal JWT, kept for audit
+	// correlation with the IdP's logs.
+	SourceJTI string `json:"src_jti"`
 	// TenantPublicID is carried in the tenant_id JWT claim. Its value is the
 	// tenant's 16-character hexadecimal public ID, not its UUIDv7 ID. It is
 	// optional: tenant-independent tokens omit the claim.
@@ -112,7 +116,7 @@ func (v *JWKSValidator) Claims(ctx context.Context, authorization string) (Inter
 }
 
 func validClaims(claims InternalJWTClaims) bool {
-	return strings.TrimSpace(claims.Subject) != "" && strings.TrimSpace(claims.ClientID) != "" && strings.TrimSpace(claims.ID) != "" && claims.IssuedAt != nil && claims.ExpiresAt != nil && claims.NotBefore != nil && strings.TrimSpace(claims.TokenUse) != ""
+	return strings.TrimSpace(claims.Subject) != "" && strings.TrimSpace(claims.ClientID) != "" && strings.TrimSpace(claims.SourceJTI) != "" && strings.TrimSpace(claims.ID) != "" && claims.IssuedAt != nil && claims.ExpiresAt != nil && claims.NotBefore != nil && strings.TrimSpace(claims.TokenUse) != ""
 }
 
 func (v *JWKSValidator) key(ctx context.Context, kid string) (*ecdsa.PublicKey, error) {

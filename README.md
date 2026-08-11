@@ -104,6 +104,7 @@ connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う
 
 - JWKS の取得先は環境変数 `INTERNAL_JWKS_URL`（デフォルト: `http://gateway:8080/.well-known/jwks.json`）で指定し、取得結果は 5 分間キャッシュされる
 - issuer / audience / token_use の期待値は `internal/server/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
+- `src_jti`（変換元外部トークンの jti。IdP 監査ログとの相関用）は必須クレームとして非空を検証する
 - ハンドラは `NewHandler()` → `NewHandlerWithJWKSURL(jwksURL)` → `NewHandlerWithValidator(validator)` の段階的コンストラクタで構成され、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
 
 ローカルでの動作確認には `cmd/jwtgen` でトークンと JWKS を生成する
