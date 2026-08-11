@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 
+	"connectrpc.com/connect"
+
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
 	"github.com/pj-hoakari/go-service-template/internal/greet"
 	"github.com/pj-hoakari/go-service-template/internal/jwks"
@@ -24,6 +26,7 @@ func NewHandlerWithValidator(validator JWTValidator) http.Handler {
 	path, handler := greetv1connect.NewGreetServiceHandlerWithAuthz(
 		greet.NewService(),
 		newGreetAuthzVerifier(validator),
+		connect.WithInterceptors(newTenantPublicIDInterceptor(validator)),
 	)
 	mux.Handle(path, handler)
 
