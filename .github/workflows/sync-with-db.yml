@@ -33,13 +33,13 @@ jobs:
                     echo "::notice::with-db ブランチが存在しないため同期をスキップしました"
                   fi
 
-            - name: Rebase with-db onto main
+            - name: Merge main into with-db
               if: steps.branch.outputs.exists == 'true'
               run: |
                   git config user.name "github-actions[bot]"
                   git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
                   git switch with-db
-                  git rebase origin/main
+                  git merge --no-ff --no-edit origin/main
 
             - name: Push candidate branch
               if: steps.branch.outputs.exists == 'true'
@@ -78,8 +78,9 @@ jobs:
                   fetch-depth: 0
 
             - name: Promote candidate to with-db
+              # 検証中に with-db へ別の push があった場合は non-ff で失敗し、次回同期に委ねる。
               run: |
-                  git push --force-with-lease origin HEAD:refs/heads/with-db
+                  git push origin HEAD:refs/heads/with-db
                   git push origin --delete with-db-candidate
 
             - name: Close resolved sync-failure issues
@@ -104,7 +105,7 @@ jobs:
                   ASSIGNEE: KasumiMercury
               run: |
                   stage="不明"
-                  if [ "${{ needs.prepare.result }}" = "failure" ]; then stage="リベース競合"; fi
+                  if [ "${{ needs.prepare.result }}" = "failure" ]; then stage="マージ競合"; fi
                   if [ "${{ needs.test.result }}" = "failure" ]; then stage="テスト失敗"; fi
                   if [ "${{ needs.lint.result }}" = "failure" ]; then stage="lint 失敗"; fi
                   if [ "${{ needs.generate-check.result }}" = "failure" ]; then stage="go generate ドリフト"; fi
@@ -126,11 +127,11 @@ jobs:
                   git fetch origin
                   git switch with-db
                   git reset --hard origin/with-db
-                  git rebase origin/main
-                  # 競合した場合: 解消して git add → git rebase --continue
+                  git merge origin/main
+                  # 競合した場合: 解消して git add → git commit
                   # go.mod / go.sum の競合は「main の更新 + DB 依存の追加」の形に編集し go mod tidy で go.sum を再生成
                   go test ./...
-                  git push --force-with-lease origin with-db
+                  git push origin with-db
                   \`\`\`
 
                   EOF
