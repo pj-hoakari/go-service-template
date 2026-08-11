@@ -3,6 +3,8 @@
 Connect (connect-go) ベースの Go マイクロサービス開発用テンプレートリポジトリ
 
 - HTTP サーバ（ヘルスチェック `GET /healthz` + graceful shutdown）
+- API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
+- 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
 - マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
@@ -23,7 +25,8 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 | ファイル | 箇所 | 内容 |
 | --- | --- | --- |
 | `go.mod` | `module` 行 | モジュールパス |
-| `cmd/server/main.go` | import | `.../internal/server` の参照 |
+| `cmd/server/main.go` / `cmd/jwtgen/main.go` | import | `.../internal/*` の参照 |
+| `internal/**`（`internal/server` / `internal/jwks` など） | import | 内部パッケージ間の参照 |
 | `buf.gen.go.yaml` | `go_package_prefix` | 生成コードのパッケージ接頭辞 |
 
 生成物（`gen/`）を除いて一括置換
@@ -66,7 +69,7 @@ cd clients/connect-es && npm install
 
 ## 初期設定チェックリスト
 
-- [ ] Go モジュールパスを `github.com/<owner>/<repo>` に置換（`go.mod` / `cmd/server/main.go` / `buf.gen.go.yaml`）
+- [ ] Go モジュールパスを `github.com/<owner>/<repo>` に置換（`go.mod` / `cmd/**` / `internal/**` / `buf.gen.go.yaml`）
 - [ ] `go mod tidy` を実行
 - [ ] `task proto:gen:go` で connect-go を再生成し、`gen/` をコミット
 
@@ -94,18 +97,27 @@ task proto
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
 ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
 
-### greet service の authz interceptor
+### greet service の authz interceptor（内部 JWT 検証）
 
 `Greet` は proto の policy annotation により `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する  
-`internal/server` では、生成された `NewGreetServiceHandlerWithAuthz` に開発用 verifier を渡す　　
+`internal/server` では、生成された `NewGreetServiceHandlerWithAuthz` に、API Gateway 発行の内部 JWT（ES256）を JWKS で検証する verifier を渡す（`AUTH_LEVEL_PUBLIC` の RPC は検証をスキップ）
 
-ローカルでは次の Authorization ヘッダーで呼び出せる　　
+- JWKS の取得先は環境変数 `INTERNAL_JWKS_URL`（デフォルト: `http://gateway:8080/.well-known/jwks.json`）で指定し、取得結果は 5 分間キャッシュされる
+- issuer / audience / token_use の期待値は `internal/server/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
+- ハンドラは `NewHandler()` → `NewHandlerWithJWKSURL(jwksURL)` → `NewHandlerWithValidator(validator)` の段階的コンストラクタで構成され、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
 
-```text
-Authorization: Bearer example-greet-token
+ローカルでの動作確認には `cmd/jwtgen` でトークンと JWKS を生成する
+
+```bash
+# ES256 の内部 JWT と対応する JWKS ドキュメントを JSON で出力
+go run ./cmd/jwtgen -scope greeting.read -ttl 10m
+
+# フラグ: -issuer / -audience / -token-use / -scope / -kid / -ttl
 ```
 
-この固定トークンと固定スコープはあくまで interceptor の利用例であり、実運用では OIDC/JWT などで検証した identity claims を verifier から参照するよう置き換える
+出力の `jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる
+
+`JWTValidator` インターフェースのモックは `go generate ./...` で再生成する（`go tool mockgen` を使用）
 
 ---
 

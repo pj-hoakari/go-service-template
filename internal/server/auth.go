@@ -2,46 +2,65 @@ package server
 
 import (
 	"context"
+	"strings"
 
 	"connectrpc.com/connect"
 
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
 )
 
-const exampleGreetBearerToken = "example-greet-token"
+const (
+	internalJWTIssuer   = "api-gateway"
+	internalJWTAudience = "go-service-template"
+)
 
-// newExampleGreetAuthzVerifier demonstrates how to adapt an application's
-// identity provider to the Verifier generated from authz policy annotations.
-// Replace the fixed token and scopes with validated identity claims in a real
-// service.
-func newExampleGreetAuthzVerifier() greetv1connect.Verifier {
+// internalTokenUseAccess is the token_use claim every authenticated RPC
+// expects in this template. A service that issues several token kinds (for
+// example user access vs service-to-service tokens) can vary the expected
+// token_use per RPC by switching on the procedure name
+// (e.g. greetv1connect.GreetServiceGreetProcedure).
+const internalTokenUseAccess = "access"
+
+// newGreetAuthzVerifier adapts the internal JWT validator to the Verifier
+// generated from authz policy annotations. RPCs marked AUTH_LEVEL_PUBLIC skip
+// verification; every other RPC requires a valid internal JWT whose scopes
+// cover the policy's required scopes.
+func newGreetAuthzVerifier(validator JWTValidator) greetv1connect.Verifier {
 	return greetv1connect.VerifierFunc(func(ctx context.Context, policy greetv1connect.AuthPolicy) error {
 		if policy.Level == greetv1connect.AuthLevelPublic {
 			return nil
 		}
 
 		callInfo, ok := connect.CallInfoForHandlerContext(ctx)
-		if !ok || callInfo.RequestHeader().Get("Authorization") != "Bearer "+exampleGreetBearerToken {
+		if !ok {
 			return connect.NewError(connect.CodeUnauthenticated, nil)
 		}
 
-		// In this example, a successfully authenticated token has this single
-		// scope. A production verifier would read scopes from validated claims.
-		grantedScopes := map[string]bool{"greeting.read": true}
-		for _, requiredScope := range policy.RequiredScopes {
-			if !grantedScopes[requiredScope] {
-				return connect.NewError(connect.CodePermissionDenied, nil)
-			}
-		}
-
-		if policy.Level == greetv1connect.AuthLevelInternal {
-			return connect.NewError(connect.CodePermissionDenied, nil)
-		}
-
-		return nil
+		return authorizeInternalJWT(ctx, validator, callInfo.RequestHeader().Get("Authorization"), policy.RequiredScopes)
 	})
 }
 
-func exampleGreetAuthorizationHeader() string {
-	return "Bearer " + exampleGreetBearerToken
+func authorizeInternalJWT(ctx context.Context, validator JWTValidator, authorization string, requiredScopes []string) error {
+	claims, err := validator.Claims(ctx, authorization)
+	if err != nil || claims.TokenUse != internalTokenUseAccess {
+		return connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	for _, requiredScope := range requiredScopes {
+		if !hasScope(claims.Scope, requiredScope) {
+			return connect.NewError(connect.CodePermissionDenied, nil)
+		}
+	}
+
+	return nil
+}
+
+func hasScope(scope, requiredScope string) bool {
+	for _, grantedScope := range strings.Fields(scope) {
+		if grantedScope == requiredScope {
+			return true
+		}
+	}
+
+	return false
 }

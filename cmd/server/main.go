@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pj-hoakari/go-service-template/internal/jwks"
 	"github.com/pj-hoakari/go-service-template/internal/server"
 )
 
@@ -30,9 +31,10 @@ func run() error {
 	defer stop()
 
 	addr := getenv("SERVER_ADDR", defaultAddr)
+	jwksURL := getenv("INTERNAL_JWKS_URL", jwks.DefaultInternalJWKSURL)
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           server.NewHandler(),
+		Handler:           server.NewHandlerWithJWKSURL(jwksURL),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
