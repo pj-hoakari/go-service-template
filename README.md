@@ -2,7 +2,14 @@
 
 Connect (connect-go) ベースの Go マイクロサービス開発用テンプレートリポジトリ
 
+> [!NOTE]
+> `with-db`ブランチは PostgreSQL による永続化を含む **DBあり版** テンプレート  
+> DB を使わないサービスは `main` ブランチを使う
+
 - HTTP サーバ（ヘルスチェック `GET /healthz` + graceful shutdown）
+- PostgreSQL による永続化（sqlx + pgx、`DATABASE_URL` で接続先を指定、repository インターフェース + `internal/infra/db` の実装）
+- golang-migrate によるマイグレーション（`migrations/` + `task migrate:*` タスク）と Docker Compose（postgres → migrate → server）
+- testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
 - API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
 - マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー
@@ -62,6 +69,7 @@ cd clients/connect-es && npm install
 ### 3. その他
 
 - `cmd/server/main.go` のログ文字列 `go-service-template: ...`
+- `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
 
@@ -90,12 +98,15 @@ cd clients/connect-es && npm install
 cmd/server/           エントリポイント（依存の組み立て・DI）
 internal/
   domain/             ドメインモデル（エンティティ + 検証。他レイヤに依存しない）
-  application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain を使う）
+  application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain / repository を使う）
+  repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・authz verifier・interceptor。application に依存）
+    db/               repository の PostgreSQL 実装（sqlx。tenantctx によるテナントガード）
   jwks/               内部 JWT の検証（JWKS 取得 + ES256）
   jwtgen/             開発・テスト用の JWT / JWKS 生成
   tenantctx/          テナント公開 ID の context 注入・検証
+migrations/           golang-migrate 形式のマイグレーション SQL（up/down のペア）
 gen/                  buf による生成コード（手動編集しない）
 ```
 
@@ -111,6 +122,32 @@ mise trust
 mise install
 task proto
 ```
+
+### PostgreSQL を使った開発
+
+Docker Compose で PostgreSQL、golang-migrate によるマイグレーション、および開発サーバーを起動できる
+
+```bash
+docker compose up --build
+```
+
+サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける  
+アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
+ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
+
+```bash
+# マイグレーションを適用
+task migrate:up
+# 新しいマイグレーションを作成（up/down のペアを生成）
+task migrate:create -- <migration_name>
+# 1 つ前にロールバック
+task migrate:down
+# 現在のバージョンと dirty 状態を表示
+task migrate:version
+```
+
+repository の PostgreSQL 実装（`internal/infra/db`）は `internal/tenantctx` によるテナントガード付きで、context に認証済みテナント公開 ID が無い書き込みは fail-closed で拒否する  
+統合テスト（`internal/infra/db/postgres_test.go`）は testcontainers で PostgreSQL コンテナを起動し、`migrations/` の up SQL を適用した DB に対して検証する（`go test ./...` の実行に Docker が必要）
 
 ### connect-es の生成
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
