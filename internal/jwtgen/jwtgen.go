@@ -17,9 +17,12 @@ type Config struct {
 	Issuer   string
 	Audience string
 	TokenUse string
-	Scope    string
-	KeyID    string
-	TTL      time.Duration
+	// TenantPublicID is the tenant's 16-character hexadecimal public ID. It is
+	// optional: when empty, the tenant_id claim is omitted from the token.
+	TenantPublicID string
+	Scope          string
+	KeyID          string
+	TTL            time.Duration
 }
 
 type Output struct {
@@ -46,6 +49,9 @@ type claims struct {
 	TokenUse string `json:"token_use"`
 	Scope    string `json:"scope"`
 	ClientID string `json:"client_id"`
+	// TenantPublicID is serialized as tenant_id for compatibility with the
+	// internal JWT claim contract. It is a 16-character hexadecimal public ID.
+	TenantPublicID string `json:"tenant_id,omitempty"`
 }
 
 func Generate(config Config) (Output, error) {
@@ -73,9 +79,10 @@ func Generate(config Config) (Output, error) {
 			NotBefore: jwt.NewNumericDate(now),
 			ID:        "test-jti",
 		},
-		TokenUse: config.TokenUse,
-		Scope:    config.Scope,
-		ClientID: "test-client",
+		TokenUse:       config.TokenUse,
+		Scope:          config.Scope,
+		ClientID:       "test-client",
+		TenantPublicID: config.TenantPublicID,
 	})
 	token.Header["kid"] = config.KeyID
 

@@ -39,6 +39,10 @@ type InternalJWTClaims struct {
 	TokenUse string `json:"token_use"`
 	Scope    string `json:"scope"`
 	ClientID string `json:"client_id"`
+	// TenantPublicID is carried in the tenant_id JWT claim. Its value is the
+	// tenant's 16-character hexadecimal public ID, not its UUIDv7 ID. It is
+	// optional: tenant-independent tokens omit the claim.
+	TenantPublicID string `json:"tenant_id"`
 }
 
 type jwksDocument struct {

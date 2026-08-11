@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
+	"github.com/pj-hoakari/go-service-template/internal/jwks"
 )
 
 const (
@@ -53,6 +54,16 @@ func authorizeInternalJWT(ctx context.Context, validator JWTValidator, authoriza
 	}
 
 	return nil
+}
+
+// tenantPublicIDFromClaims extracts the tenant's 16-character hexadecimal
+// public ID from the tenant_id JWT claim. The ID is only meaningful on access
+// tokens; tenant-independent tokens omit the claim, so ok reports whether a
+// usable tenant ID is present.
+func tenantPublicIDFromClaims(claims jwks.InternalJWTClaims) (string, bool) {
+	tenantPublicID := strings.TrimSpace(claims.TenantPublicID)
+
+	return tenantPublicID, claims.TokenUse == internalTokenUseAccess && tenantPublicID != ""
 }
 
 func hasScope(scope, requiredScope string) bool {

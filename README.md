@@ -112,12 +112,21 @@ connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う
 # ES256 の内部 JWT と対応する JWKS ドキュメントを JSON で出力
 go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 
-# フラグ: -issuer / -audience / -token-use / -scope / -kid / -ttl
+# フラグ: -issuer / -audience / -token-use / -tenant-public-id / -scope / -kid / -ttl
+# -tenant-public-id は任意（空なら tenant_id クレームを省略）
 ```
 
 出力の `jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる
 
 `JWTValidator` インターフェースのモックは `go generate ./...` で再生成する（`go tool mockgen` を使用）
+
+### テナントIDのコンテキスト注入（tenantctx）
+
+内部 JWT の `tenant_id` クレーム（テナントの 16 文字 hex 公開 ID）は、Connect interceptor（`internal/server/tenant_id_interceptor.go`、`connect.WithInterceptors` で配線）が検証済みクレームから取り出し、`internal/tenantctx` 経由で request context に注入する
+
+- 注入は fail-closed: 全サービスは原則テナント必須のため、`token_use` が `access` かつ `tenant_id` が非空のトークンを持たないリクエストは `CodeUnauthenticated` で拒否する
+- テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、PUBLIC エンドポイント等）を持つサービスは、`tenantIDNotRequired` に procedure 名を列挙して除外する
+- ハンドラ / ユースケースは `tenantctx.TenantPublicIDFromContext(ctx)` で参照する。テナント対象操作の認可には `tenantctx.Ensure`（fail-closed）、永続化から復元したモデルの防衛的チェックには `tenantctx.VerifyOwnership`（fail-open）を使う
 
 ---
 

@@ -15,6 +15,7 @@ func main() {
 	issuer := flag.String("issuer", "api-gateway", "internal JWT issuer")
 	audience := flag.String("audience", "go-service-template", "internal JWT audience")
 	tokenUse := flag.String("token-use", "access", "token_use claim")
+	tenantPublicID := flag.String("tenant-public-id", "", "tenant public ID (16-character hex; tenant_id claim is omitted when empty)")
 	scope := flag.String("scope", "greeting.read", "space-delimited scopes")
 	kid := flag.String("kid", "test-key", "JWK key ID")
 	ttl := flag.Duration("ttl", 2*time.Minute, "token lifetime")
@@ -23,7 +24,7 @@ func main() {
 
 	output, err := jwtgen.Generate(jwtgen.Config{
 		Issuer: *issuer, Audience: *audience, TokenUse: *tokenUse,
-		Scope: *scope, KeyID: *kid, TTL: *ttl,
+		TenantPublicID: *tenantPublicID, Scope: *scope, KeyID: *kid, TTL: *ttl,
 	})
 	if err != nil {
 		log.Print("jwtgen: ", err)
