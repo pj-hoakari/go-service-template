@@ -1,11 +1,11 @@
-package server
+package connect
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect"
 	"go.uber.org/mock/gomock"
 
 	greetv1 "github.com/pj-hoakari/go-service-template/gen/greet/v1"
@@ -21,7 +21,7 @@ func TestTenantPublicIDInterceptor(t *testing.T) {
 		claims    jwks.InternalJWTClaims
 		claimsErr error
 		wantID    string
-		wantCode  connect.Code
+		wantCode  connectrpc.Code
 	}{
 		{
 			name:      "injects tenant ID from access token",
@@ -39,19 +39,19 @@ func TestTenantPublicIDInterceptor(t *testing.T) {
 			name:      "rejects tenant-independent token",
 			claims:    jwks.InternalJWTClaims{TokenUse: internalTokenUseAccess},
 			claimsErr: nil,
-			wantCode:  connect.CodeUnauthenticated,
+			wantCode:  connectrpc.CodeUnauthenticated,
 		},
 		{
 			name:      "rejects non-access token use",
 			claims:    jwks.InternalJWTClaims{TokenUse: "service", TenantPublicID: "a1b2c3d4e5f60718"},
 			claimsErr: nil,
-			wantCode:  connect.CodeUnauthenticated,
+			wantCode:  connectrpc.CodeUnauthenticated,
 		},
 		{
 			name:      "rejects invalid token",
 			claims:    jwks.InternalJWTClaims{},
 			claimsErr: errors.New("invalid internal JWT"),
-			wantCode:  connect.CodeUnauthenticated,
+			wantCode:  connectrpc.CodeUnauthenticated,
 		},
 	}
 
@@ -66,21 +66,21 @@ func TestTenantPublicIDInterceptor(t *testing.T) {
 
 			var gotID string
 
-			next := connect.UnaryFunc(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+			next := connectrpc.UnaryFunc(func(ctx context.Context, _ connectrpc.AnyRequest) (connectrpc.AnyResponse, error) {
 				nextCalled = true
 				gotID, _ = tenantctx.TenantPublicIDFromContext(ctx)
 
-				return connect.NewResponse(&greetv1.GreetResponse{}), nil
+				return connectrpc.NewResponse(&greetv1.GreetResponse{}), nil
 			})
 
-			req := connect.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
+			req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
 			req.Header().Set("Authorization", "Bearer test-token")
 
 			_, err := newTenantPublicIDInterceptor(validator).WrapUnary(next)(context.Background(), req)
 
 			if tt.wantCode != 0 {
-				if connect.CodeOf(err) != tt.wantCode {
-					t.Fatalf("interceptor error code = %v, want %v", connect.CodeOf(err), tt.wantCode)
+				if connectrpc.CodeOf(err) != tt.wantCode {
+					t.Fatalf("interceptor error code = %v, want %v", connectrpc.CodeOf(err), tt.wantCode)
 				}
 
 				if nextCalled {

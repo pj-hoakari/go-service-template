@@ -1,9 +1,9 @@
-package server
+package connect
 
 import (
 	"context"
 
-	"connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect"
 
 	"github.com/pj-hoakari/go-service-template/internal/tenantctx"
 )
@@ -14,9 +14,9 @@ import (
 // default, so the interceptor fails closed: a request whose token carries no
 // tenant public ID is rejected unless its RPC is listed in
 // tenantIDNotRequired. Use-case boundaries still guard with tenantctx.Ensure.
-func newTenantPublicIDInterceptor(validator JWTValidator) connect.Interceptor {
-	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+func newTenantPublicIDInterceptor(validator JWTValidator) connectrpc.Interceptor {
+	return connectrpc.UnaryInterceptorFunc(func(next connectrpc.UnaryFunc) connectrpc.UnaryFunc {
+		return func(ctx context.Context, req connectrpc.AnyRequest) (connectrpc.AnyResponse, error) {
 			if tenantIDNotRequired(req.Spec().Procedure) {
 				return next(ctx, req)
 			}
@@ -25,7 +25,7 @@ func newTenantPublicIDInterceptor(validator JWTValidator) connect.Interceptor {
 
 			tenantPublicID, ok := tenantPublicIDFromClaims(claims)
 			if err != nil || !ok {
-				return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+				return nil, connectrpc.NewError(connectrpc.CodeUnauthenticated, nil)
 			}
 
 			return next(tenantctx.WithTenantPublicID(ctx, tenantPublicID), req)
