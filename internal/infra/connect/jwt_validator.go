@@ -1,6 +1,6 @@
-package server
+package connect
 
-//go:generate go tool mockgen -source=jwt_validator.go -destination=mock_jwt_validator_test.go -package=server
+//go:generate go tool mockgen -source=jwt_validator.go -destination=mock_jwt_validator_test.go -package=connect
 
 import (
 	"context"

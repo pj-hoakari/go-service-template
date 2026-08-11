@@ -1,10 +1,10 @@
-package server
+package connect
 
 import (
 	"context"
 	"strings"
 
-	"connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect"
 
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
 	"github.com/pj-hoakari/go-service-template/internal/jwks"
@@ -32,9 +32,9 @@ func newGreetAuthzVerifier(validator JWTValidator) greetv1connect.Verifier {
 			return nil
 		}
 
-		callInfo, ok := connect.CallInfoForHandlerContext(ctx)
+		callInfo, ok := connectrpc.CallInfoForHandlerContext(ctx)
 		if !ok {
-			return connect.NewError(connect.CodeUnauthenticated, nil)
+			return connectrpc.NewError(connectrpc.CodeUnauthenticated, nil)
 		}
 
 		return authorizeInternalJWT(ctx, validator, callInfo.RequestHeader().Get("Authorization"), policy.RequiredScopes)
@@ -44,12 +44,12 @@ func newGreetAuthzVerifier(validator JWTValidator) greetv1connect.Verifier {
 func authorizeInternalJWT(ctx context.Context, validator JWTValidator, authorization string, requiredScopes []string) error {
 	claims, err := validator.Claims(ctx, authorization)
 	if err != nil || claims.TokenUse != internalTokenUseAccess {
-		return connect.NewError(connect.CodeUnauthenticated, nil)
+		return connectrpc.NewError(connectrpc.CodeUnauthenticated, nil)
 	}
 
 	for _, requiredScope := range requiredScopes {
 		if !hasScope(claims.Scope, requiredScope) {
-			return connect.NewError(connect.CodePermissionDenied, nil)
+			return connectrpc.NewError(connectrpc.CodePermissionDenied, nil)
 		}
 	}
 

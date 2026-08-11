@@ -10,8 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/pj-hoakari/go-service-template/internal/application"
+	connectinfra "github.com/pj-hoakari/go-service-template/internal/infra/connect"
 	"github.com/pj-hoakari/go-service-template/internal/jwks"
-	"github.com/pj-hoakari/go-service-template/internal/server"
 )
 
 const (
@@ -32,9 +33,11 @@ func run() error {
 
 	addr := getenv("SERVER_ADDR", defaultAddr)
 	jwksURL := getenv("INTERNAL_JWKS_URL", jwks.DefaultInternalJWKSURL)
+
+	greetService := application.NewGreetService()
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           server.NewHandlerWithJWKSURL(jwksURL),
+		Handler:           connectinfra.NewHandlerWithJWKSURL(greetService, jwksURL),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

@@ -26,7 +26,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 | --- | --- | --- |
 | `go.mod` | `module` 行 | モジュールパス |
 | `cmd/server/main.go` / `cmd/jwtgen/main.go` | import | `.../internal/*` の参照 |
-| `internal/**`（`internal/server` / `internal/jwks` など） | import | 内部パッケージ間の参照 |
+| `internal/**`（`internal/infra/connect` / `internal/jwks` など） | import | 内部パッケージ間の参照 |
 | `buf.gen.go.yaml` | `go_package_prefix` | 生成コードのパッケージ接頭辞 |
 
 生成物（`gen/`）を除いて一括置換
@@ -82,6 +82,25 @@ cd clients/connect-es && npm install
 
 ---
 
+## ディレクトリ構成
+
+レイヤードアーキテクチャを採用している
+
+```
+cmd/server/           エントリポイント（依存の組み立て・DI）
+internal/
+  domain/             ドメインモデル（エンティティ + 検証。他レイヤに依存しない）
+  application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain を使う）
+  infra/
+    connect/          Connect transport（ハンドラ・authz verifier・interceptor。application に依存）
+  jwks/               内部 JWT の検証（JWKS 取得 + ES256）
+  jwtgen/             開発・テスト用の JWT / JWKS 生成
+  tenantctx/          テナント公開 ID の context 注入・検証
+gen/                  buf による生成コード（手動編集しない）
+```
+
+---
+
 ## 開発
 
 ### セットアップ
@@ -100,12 +119,12 @@ connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う
 ### greet service の authz interceptor（内部 JWT 検証）
 
 `Greet` は proto の policy annotation により `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する  
-`internal/server` では、生成された `NewGreetServiceHandlerWithAuthz` に、API Gateway 発行の内部 JWT（ES256）を JWKS で検証する verifier を渡す（`AUTH_LEVEL_PUBLIC` の RPC は検証をスキップ）
+`internal/infra/connect` では、生成された `NewGreetServiceHandlerWithAuthz` に、API Gateway 発行の内部 JWT（ES256）を JWKS で検証する verifier を渡す（`AUTH_LEVEL_PUBLIC` の RPC は検証をスキップ）
 
 - JWKS の取得先は環境変数 `INTERNAL_JWKS_URL`（デフォルト: `http://gateway:8080/.well-known/jwks.json`）で指定し、取得結果は 5 分間キャッシュされる
-- issuer / audience / token_use の期待値は `internal/server/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
+- issuer / audience / token_use の期待値は `internal/infra/connect/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
 - `src_jti`（変換元外部トークンの jti。IdP 監査ログとの相関用）は必須クレームとして非空を検証する
-- ハンドラは `NewHandler()` → `NewHandlerWithJWKSURL(jwksURL)` → `NewHandlerWithValidator(validator)` の段階的コンストラクタで構成され、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
+- ハンドラは `NewHandler(greetService)` → `NewHandlerWithJWKSURL(greetService, jwksURL)` → `NewHandlerWithValidator(greetService, validator)` の段階的コンストラクタで構成され（`greetService` は `application.GreetUseCases`）、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
 
 ローカルでの動作確認には `cmd/jwtgen` でトークンと JWKS を生成する
 
@@ -123,7 +142,7 @@ go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 
 ### テナントIDのコンテキスト注入（tenantctx）
 
-内部 JWT の `tenant_id` クレーム（テナントの 16 文字 hex 公開 ID）は、Connect interceptor（`internal/server/tenant_id_interceptor.go`、`connect.WithInterceptors` で配線）が検証済みクレームから取り出し、`internal/tenantctx` 経由で request context に注入する
+内部 JWT の `tenant_id` クレーム（テナントの 16 文字 hex 公開 ID）は、Connect interceptor（`internal/infra/connect/tenant_id_interceptor.go`、`connect.WithInterceptors` で配線）が検証済みクレームから取り出し、`internal/tenantctx` 経由で request context に注入する
 
 - 注入は fail-closed: 全サービスは原則テナント必須のため、`token_use` が `access` かつ `tenant_id` が非空のトークンを持たないリクエストは `CodeUnauthenticated` で拒否する
 - テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、PUBLIC エンドポイント等）を持つサービスは、`tenantIDNotRequired` に procedure 名を列挙して除外する
