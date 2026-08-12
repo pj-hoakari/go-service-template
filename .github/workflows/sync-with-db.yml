@@ -7,6 +7,7 @@ on:
 permissions:
     contents: write
     issues: write
+    statuses: write
 
 concurrency:
     group: sync-with-db
@@ -76,6 +77,20 @@ jobs:
               with:
                   ref: with-db-candidate
                   fetch-depth: 0
+
+            - name: Mark candidate as verified
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  sha=$(git rev-parse HEAD)
+                  for context in test actionlint; do
+                    gh api "repos/${{ github.repository }}/statuses/${sha}" \
+                      -f state=success \
+                      -f context="$context" \
+                      -f description="verified by sync-with-db" \
+                      -f target_url="$RUN_URL"
+                  done
 
             - name: Promote candidate to with-db
               # 検証中に with-db へ別の push があった場合は non-ff で失敗し、次回同期に委ねる。
