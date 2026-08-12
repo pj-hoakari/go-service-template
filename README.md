@@ -59,11 +59,18 @@ task proto:gen:go
 cd clients/connect-es && npm install
 ```
 
-### 3. その他
+### 3. Renovate 設定
+
+```bash
+mv renovate.example.json renovate.json
+```
+
+### 4. その他
 
 - `cmd/server/main.go` のログ文字列 `go-service-template: ...`
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
+- with-db ブランチと同期用 workflow（`.github/workflows/sync-with-db.yml`）を削除する
 
 ---
 
@@ -76,6 +83,9 @@ cd clients/connect-es && npm install
 - [ ] connect-es の `package.json`（`name` / `description` / `repository.url`）を更新
 - [ ] `clients/connect-es` で `npm install` を実行し `package-lock.json` を同期
 - [ ] `publish-client-es.yml` の `scope` を `@<owner>` に変更
+
+- [ ] `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
+- [ ] `sync-with-db.yml` と with-db ブランチを削除（派生リポジトリでは不要）
 
 - [ ] `main.go` のログ文字列
 - [ ] README のテンプレート説明を書き換え
