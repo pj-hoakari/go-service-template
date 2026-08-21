@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	"github.com/pj-hoakari/go-service-template/internal/domain"
 	"github.com/pj-hoakari/go-service-template/internal/tenantctx"
@@ -44,7 +43,9 @@ func TestMain(m *testing.M) {
 
 	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err == nil {
-		testDB, err = sqlx.ConnectContext(ctx, "pgx", databaseURL)
+		// Open is the same entry point the server uses, so the repository tests
+		// also cover the shared connection setup.
+		testDB, err = Open(ctx, databaseURL)
 	}
 
 	if err != nil {
