@@ -8,6 +8,36 @@ vars:
     DEFAULT_DATABASE_URL: postgres://go_service_template:go_service_template@localhost:5432/go_service_template?sslmode=disable
 
 tasks:
+    up:
+        desc: Start the development environment.
+        cmds:
+            - docker compose up -d
+
+    up:build:
+        desc: Build and start the development environment.
+        cmds:
+            - docker compose up -d --build
+
+    up:o11y:
+        desc: Start the development environment with observability.
+        cmds:
+            - docker compose -f compose.yml -f compose.o11y.yml up -d
+
+    up:build:o11y:
+        desc: Build and start the development environment with observability.
+        cmds:
+            - docker compose -f compose.yml -f compose.o11y.yml up -d --build
+
+    down:
+        desc: Stop the development environment.
+        cmds:
+            - docker compose down
+
+    down:o11y:
+        desc: Stop the development environment with observability.
+        cmds:
+            - docker compose -f compose.yml -f compose.o11y.yml down
+
     proto:
         desc: Lint proto and regenerate connect-go code for development.
         cmds:

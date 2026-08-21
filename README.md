@@ -12,7 +12,8 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
 - API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
-- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー
+- OpenTelemetry によるトレーシング（Connect interceptor + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
+- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
 - connect-es クライアントの npm publish ワークフロー
@@ -76,6 +77,7 @@ mv renovate.example.json renovate.json
 
 - `cmd/server/main.go` のログ文字列 `go-service-template: ...`
 - `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
+- `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
 - with-db ブランチと同期用 workflow（`.github/workflows/sync-with-db.yml`）を削除する
@@ -96,6 +98,7 @@ mv renovate.example.json renovate.json
 - [ ] `sync-with-db.yml` と with-db ブランチを削除（派生リポジトリでは不要）
 
 - [ ] `main.go` のログ文字列
+- [ ] `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`
 - [ ] README のテンプレート説明を書き換え
 
 ---
@@ -115,6 +118,7 @@ internal/
     db/               repository の PostgreSQL 実装（sqlx。tenantctx によるテナントガード）
   jwks/               内部 JWT の検証（JWKS 取得 + ES256）
   jwtgen/             開発・テスト用の JWT / JWKS 生成
+  telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
   tenantctx/          テナント公開 ID の context 注入・検証
 migrations/           golang-migrate 形式のマイグレーション SQL（up/down のペア）
 gen/                  buf による生成コード（手動編集しない）
@@ -133,14 +137,21 @@ mise install
 task proto
 ```
 
+<<<<<<< HEAD
 ### PostgreSQL を使った開発
 
 Docker Compose で PostgreSQL、golang-migrate によるマイグレーション、および開発サーバーを起動できる
+=======
+### Docker Compose での起動
+
+Docker Compose で開発サーバーを起動できる
+>>>>>>> origin/main
 
 ```bash
 docker compose up --build
 ```
 
+<<<<<<< HEAD
 サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける  
 アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
 ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
@@ -158,6 +169,40 @@ task migrate:version
 
 repository の PostgreSQL 実装（`internal/infra/db`）は `internal/tenantctx` によるテナントガード付きで、context に認証済みテナント公開 ID が無い書き込みは fail-closed で拒否する  
 統合テスト（`internal/infra/db/postgres_test.go`）は testcontainers で PostgreSQL コンテナを起動し、`migrations/` の up SQL を適用した DB に対して検証する（`go test ./...` の実行に Docker が必要）
+=======
+もしくは
+```bash
+task up:build
+```
+
+サーバーは `http://localhost:8080` で待ち受ける（停止は `task down`）  
+RPC を呼び出すには内部 JWT が必要なので、`cmd/jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）
+
+### トレースの確認（Jaeger）
+
+監視スタックはオーバーライドファイル `compose.o11y.yml` を重ねたときだけ有効になる  
+Jaeger が起動し、`server` に OTLP エクスポート用の環境変数（`OTEL_EXPORTER_OTLP_ENDPOINT` など）がセットされる
+
+```bash
+docker compose -f compose.yml -f compose.o11y.yml up --build
+```
+
+もしくは
+```bash
+task up:build:o11y
+```
+
+Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
+
+トレーシングの配線は `internal/telemetry` にあり、`cmd/server/main.go` の起動時に `telemetry.Setup` で global tracer provider と W3C Trace Context / Baggage propagator を設定する
+
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` または `OTEL_EXPORTER_OTLP_ENDPOINT` が設定されているときだけ OTLP/HTTP で span を export する。未設定なら no-op provider で動作し、エラーにはならない（トレーシングはデプロイ環境の opt-in）
+- `service.name` は `OTEL_SERVICE_NAME`（デフォルト: `telemetry.DefaultServiceName` = `go-service-template`）
+- ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する
+- Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。API Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
+- interceptor は authz interceptor の後段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）は span にならない
+- 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
+>>>>>>> origin/main
 
 ### connect-es の生成
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
@@ -171,7 +216,7 @@ connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う
 - JWKS の取得先は環境変数 `INTERNAL_JWKS_URL`（デフォルト: `http://gateway:8080/.well-known/jwks.json`）で指定し、取得結果は 5 分間キャッシュされる
 - issuer / audience / token_use の期待値は `internal/infra/connect/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
 - `src_jti`（変換元外部トークンの jti。IdP 監査ログとの相関用）は必須クレームとして非空を検証する
-- ハンドラは `NewHandler(greetService)` → `NewHandlerWithJWKSURL(greetService, jwksURL)` → `NewHandlerWithValidator(greetService, validator)` の段階的コンストラクタで構成され（`greetService` は `application.GreetUseCases`）、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
+- ハンドラは `NewHandler(greetService)` → `NewHandlerWithJWKSURL(greetService, jwksURL)` → `NewHandlerWithValidator(greetService, validator)` の段階的コンストラクタで構成され（`greetService` は `application.GreetUseCases`。いずれも `(http.Handler, error)` を返し、tracing interceptor の生成に失敗するとエラー）、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
 
 ローカルでの動作確認には `cmd/jwtgen` でトークンと JWKS を生成する
 

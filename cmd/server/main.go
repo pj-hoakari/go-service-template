@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	connectinfra "github.com/pj-hoakari/go-service-template/internal/infra/connect"
 	dbinfra "github.com/pj-hoakari/go-service-template/internal/infra/db"
 	"github.com/pj-hoakari/go-service-template/internal/jwks"
+	"github.com/pj-hoakari/go-service-template/internal/telemetry"
 )
 
 const (
@@ -40,6 +42,16 @@ func run() error {
 		return errors.New("DATABASE_URL is required")
 	}
 
+	shutdownTracing, err := telemetry.Setup(ctx)
+	if err != nil {
+		return fmt.Errorf("setup tracing: %w", err)
+	}
+	defer shutdownTracingWithTimeout(shutdownTracing)
+
+	if telemetry.Enabled() {
+		log.Printf("go-service-template: tracing enabled for service %q", telemetry.ServiceName())
+	}
+
 	db, err := dbinfra.Open(ctx, databaseURL)
 	if err != nil {
 		return err
@@ -51,9 +63,15 @@ func run() error {
 	}()
 
 	greetService := application.NewGreetService(dbinfra.NewPostgresGreetingRepository(db))
+
+	handler, err := connectinfra.NewHandlerWithJWKSURL(greetService, jwksURL)
+	if err != nil {
+		return fmt.Errorf("build handler: %w", err)
+	}
+
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           connectinfra.NewHandlerWithJWKSURL(greetService, jwksURL),
+		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
@@ -81,6 +99,17 @@ func run() error {
 		defer cancel()
 
 		return httpServer.Shutdown(shutdownCtx)
+	}
+}
+
+// shutdownTracingWithTimeout flushes pending spans on a fresh context, because
+// the run context is already cancelled once the process starts shutting down.
+func shutdownTracingWithTimeout(shutdown telemetry.ShutdownFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := shutdown(ctx); err != nil {
+		log.Printf("go-service-template: shutdown tracing: %v", err)
 	}
 }
 

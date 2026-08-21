@@ -2,36 +2,45 @@
 package connect
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
 	connectrpc "connectrpc.com/connect"
+	"connectrpc.com/otelconnect"
 
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
 	"github.com/pj-hoakari/go-service-template/internal/application"
 	"github.com/pj-hoakari/go-service-template/internal/jwks"
 )
 
-func NewHandler(greetService application.GreetUseCases) http.Handler {
+func NewHandler(greetService application.GreetUseCases) (http.Handler, error) {
 	return NewHandlerWithJWKSURL(greetService, jwks.DefaultInternalJWKSURL)
 }
 
-func NewHandlerWithJWKSURL(greetService application.GreetUseCases, jwksURL string) http.Handler {
+func NewHandlerWithJWKSURL(greetService application.GreetUseCases, jwksURL string) (http.Handler, error) {
 	return NewHandlerWithValidator(greetService, jwks.NewJWKSValidator(jwksURL, internalJWTIssuer, internalJWTAudience))
 }
 
-func NewHandlerWithValidator(greetService application.GreetUseCases, validator JWTValidator) http.Handler {
+func NewHandlerWithValidator(greetService application.GreetUseCases, validator JWTValidator) (http.Handler, error) {
+	// The caller sits behind the API Gateway, so an incoming trace context is
+	// trusted and continued instead of being demoted to a span link.
+	tracing, err := otelconnect.NewInterceptor(otelconnect.WithTrustRemote())
+	if err != nil {
+		return nil, fmt.Errorf("create tracing interceptor: %w", err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", handleHealthz)
 
 	path, handler := greetv1connect.NewGreetServiceHandlerWithAuthz(
 		NewService(greetService),
 		newGreetAuthzVerifier(validator),
-		connectrpc.WithInterceptors(newTenantPublicIDInterceptor(validator)),
+		connectrpc.WithInterceptors(tracing, newTenantPublicIDInterceptor(validator)),
 	)
 	mux.Handle(path, handler)
 
-	return mux
+	return mux, nil
 }
 
 func handleHealthz(w http.ResponseWriter, _ *http.Request) {
