@@ -12,7 +12,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
 - API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
-- OpenTelemetry によるトレーシング（Connect interceptor + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
+- OpenTelemetry によるトレーシング（Connect interceptor + otelsql + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
 - マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
@@ -115,7 +115,7 @@ internal/
   repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・authz verifier・interceptor。application に依存）
-    db/               repository の PostgreSQL 実装（sqlx。tenantctx によるテナントガード）
+    db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード）
   jwks/               内部 JWT の検証（JWKS 取得 + ES256）
   jwtgen/             開発・テスト用の JWT / JWKS 生成
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
@@ -192,6 +192,7 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 - ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する
 - Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。API Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
 - interceptor は authz interceptor の後段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）は span にならない
+- PostgreSQL へのクエリは `otelsql` でラップした pgx ドライバ（`internal/infra/db/open.go`）で span になり、空白・改行を 1 つの空白に正規化した SQL 文（`db.query.text`）を属性に持つ。RPC span の子として表示される
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
 
 ### connect-es の生成

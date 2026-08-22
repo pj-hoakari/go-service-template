@@ -18,6 +18,7 @@ require github.com/pj-hoakari/protoc-gen-authz-go v0.2.0
 
 require (
 	connectrpc.com/otelconnect v0.9.0
+	github.com/XSAM/otelsql v0.43.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jmoiron/sqlx v1.4.0
