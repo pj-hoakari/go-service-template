@@ -6,6 +6,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
 - OpenTelemetry によるトレーシング（Connect interceptor + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
+- `log/slog` による構造化ログ（Cloud Logging 互換の JSON。`internal/logging`。トレース有効時はトレース ID / スパン ID をレコードに付与）
 - マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
@@ -68,7 +69,6 @@ mv renovate.example.json renovate.json
 
 ### 4. その他
 
-- `cmd/server/main.go` / `internal/infra/connect/service.go` のログ文字列 `go-service-template: ...`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
@@ -89,7 +89,6 @@ mv renovate.example.json renovate.json
 - [ ] `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
 - [ ] `sync-with-db.yml` と with-db ブランチを削除（派生リポジトリでは不要）
 
-- [ ] `main.go` / `service.go` のログ文字列
 - [ ] `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`
 - [ ] README のテンプレート説明を書き換え
 
@@ -108,6 +107,7 @@ internal/
     connect/          Connect transport（ハンドラ・authz verifier・interceptor。application に依存）
   jwks/               内部 JWT の検証（JWKS 取得 + ES256）
   jwtgen/             開発・テスト用の JWT / JWKS 生成
+  logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
   tenantctx/          テナント公開 ID の context 注入・検証
 gen/                  buf による生成コード（手動編集しない）
@@ -167,6 +167,16 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 - interceptor は authz interceptor の後段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）は span にならない
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
 
+### ログ
+
+ログは標準出力へ 1 行 1 件の JSON で書き出し、Cloud Logging がそのまま解釈する構造化フォーマット（`severity`、`message`、`time`）に合わせている  
+トレースが有効なリクエストでは、その文脈からトレース ID とスパン ID を自動で読み取り、`logging.googleapis.com/trace` などのフィールドとして各レコードに付与する  
+このハンドラは `internal/logging` が提供し、`cmd/server/main.go` の起動時に `slog.SetDefault` で既定のロガーとして設定する  
+`message` や `severity` のような予約キーと同じ名前の属性は、値が上書きされないように `attr_` 接頭辞付きで出力する
+
+- `LOG_LEVEL`（デフォルト: `info`）: ログに出力する最小レベル。`debug`／`info`／`warn`（`warning` も同義）／`error`／`critical` を取り、未知の値ならサーバーは起動しない
+- `GOOGLE_CLOUD_PROJECT`（デフォルト: なし）: 設定するとログの `logging.googleapis.com/trace` を `projects/<project>/traces/<trace_id>` 形式にし、Cloud Logging でトレースと相関させる。未設定なら素のトレース ID を出力する
+
 ### connect-es の生成
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
 ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
@@ -206,8 +216,9 @@ go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 
 ### エラー
 
-内部エラーは `internal` と固定メッセージ `internal error` だけを返し、原因はサーバー側のログ（`go-service-template: internal error: ...`）にのみ記録する  
-クライアント都合の中断・締め切り超過は `canceled`／`deadline_exceeded` として返してログには記録せず、内部エラーはトレースが有効なときだけログに `trace_id` を添えてトレースと突き合わせられるようにする  
+内部エラーは `internal` と固定メッセージ `internal error` だけを返し、原因はサーバー側のログにのみ記録する  
+そのログは `message` が `internal error`、`error` 属性が原因という構造化レコードで、トレースが有効なときはトレースのフィールドも付く（「ログ」を参照）  
+クライアント都合の中断・締め切り超過は `canceled`／`deadline_exceeded` として返し、サーバー側のログには記録しない  
 ハンドラの内部エラーは `InternalError(ctx, err)`（`internal/infra/connect/service.go`）で組み立てる（他の transport からも同じ関数を使う）  
 エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない  
 `connectrpc.CodeInternal` の直接使用は golangci-lint の `forbidigo` で禁止しており、許可するのは `InternalError` の中だけである

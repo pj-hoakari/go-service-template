@@ -3,10 +3,9 @@ package connect
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	connectrpc "connectrpc.com/connect"
-	"go.opentelemetry.io/otel/trace"
 
 	greetv1 "github.com/pj-hoakari/go-service-template/gen/greet/v1"
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
@@ -19,9 +18,9 @@ var errInternal = errors.New("internal error")
 
 // InternalError reports a failure the client can do nothing about. The cause is
 // written to the server log and replaced by a fixed message, so that no
-// internal detail leaves the service. When the request carries a span, the log
-// line names its trace ID, so an operator can find the failure in the trace it
-// belongs to.
+// internal detail leaves the service. The log handler names the trace of the
+// request context on the record, so an operator can find the failure in the
+// trace it belongs to.
 //
 // A cancelled or timed-out request is the client going away rather than a
 // server fault, so it keeps its own code and is not logged.
@@ -37,11 +36,7 @@ func InternalError(ctx context.Context, err error) *connectrpc.Error {
 		return connectrpc.NewError(connectrpc.CodeDeadlineExceeded, err)
 	}
 
-	if spanContext := trace.SpanFromContext(ctx).SpanContext(); spanContext.IsValid() {
-		log.Printf("go-service-template: internal error: %v trace_id=%s", err, spanContext.TraceID())
-	} else {
-		log.Printf("go-service-template: internal error: %v", err)
-	}
+	slog.ErrorContext(ctx, "internal error", "error", err)
 
 	return connectrpc.NewError(connectrpc.CodeInternal, errInternal) //nolint:forbidigo // the one place that builds internal errors
 }
