@@ -237,7 +237,8 @@ go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 内部エラーは `internal` と固定メッセージ `internal error` だけを返し、原因はサーバー側のログ（`go-service-template: internal error: ...`）にのみ記録する  
 クライアント都合の中断・締め切り超過は `canceled`／`deadline_exceeded` として返してログには記録せず、内部エラーはトレースが有効なときだけログに `trace_id` を添えてトレースと突き合わせられるようにする  
 ハンドラの内部エラーは `InternalError(ctx, err)`（`internal/infra/connect/service.go`）で組み立てる（他の transport からも同じ関数を使う）  
-エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない
+エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない  
+`connectrpc.CodeInternal` の直接使用は golangci-lint の `forbidigo` で禁止しており、許可するのは `InternalError` の中だけである
 
 ---
 
