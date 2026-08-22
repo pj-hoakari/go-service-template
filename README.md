@@ -68,7 +68,7 @@ mv renovate.example.json renovate.json
 
 ### 4. その他
 
-- `cmd/server/main.go` のログ文字列 `go-service-template: ...`
+- `cmd/server/main.go` / `internal/infra/connect/service.go` のログ文字列 `go-service-template: ...`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
@@ -89,7 +89,7 @@ mv renovate.example.json renovate.json
 - [ ] `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
 - [ ] `sync-with-db.yml` と with-db ブランチを削除（派生リポジトリでは不要）
 
-- [ ] `main.go` のログ文字列
+- [ ] `main.go` / `service.go` のログ文字列
 - [ ] `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`
 - [ ] README のテンプレート説明を書き換え
 
@@ -203,6 +203,12 @@ go run ./cmd/jwtgen -scope greeting.read -ttl 10m
 - テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、PUBLIC エンドポイント等）を持つサービスは、`tenantIDNotRequired` に procedure 名を列挙して除外する
 - ハンドラ / ユースケースは `tenantctx.TenantPublicIDFromContext(ctx)` で参照する。テナント対象操作の認可には `tenantctx.Ensure`（fail-closed）、永続化から復元したモデルの防衛的チェックには `tenantctx.VerifyOwnership`（fail-open）を使う
 - 参照は `internal/tenantctx` を直接 import する。
+
+### エラー
+
+内部エラーは `internal` と固定メッセージ `internal error` だけを返し、原因はサーバー側のログ（`go-service-template: internal error: ...`）にのみ記録する  
+ハンドラの内部エラーは `InternalError`（`internal/infra/connect/service.go`）で組み立てる（他の transport からも同じ関数を使う）  
+エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない
 
 ---
 
