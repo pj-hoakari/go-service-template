@@ -172,7 +172,8 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 ログは標準出力へ 1 行 1 件の JSON で書き出し、Cloud Logging がそのまま解釈する構造化フォーマット（`severity`、`message`、`time`）に合わせている  
 トレースが有効なリクエストでは、その文脈からトレース ID とスパン ID を自動で読み取り、`logging.googleapis.com/trace` などのフィールドとして各レコードに付与する  
 このハンドラは `internal/logging` が提供し、`cmd/server/main.go` の起動時に `slog.SetDefault` で既定のロガーとして設定する  
-`message` や `severity` のような予約キーと同じ名前の属性は、値が上書きされないように `attr_` 接頭辞付きで出力する
+`message` や `severity` のような予約キーと同じ名前の属性は、値が上書きされないように `attr_` 接頭辞付きで出力する  
+`net/http` と OpenTelemetry が内部で出すログも同じハンドラに流すので、サーバーのログはこの 1 系統にまとまる
 
 - `LOG_LEVEL`（デフォルト: `info`）: ログに出力する最小レベル。`debug`／`info`／`warn`（`warning` も同義）／`error`／`critical` を取り、未知の値ならサーバーは起動しない
 - `GOOGLE_CLOUD_PROJECT`（デフォルト: なし）: 設定するとログの `logging.googleapis.com/trace` を `projects/<project>/traces/<trace_id>` 形式にし、Cloud Logging でトレースと相関させる。未設定なら素のトレース ID を出力する
