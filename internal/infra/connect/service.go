@@ -43,7 +43,7 @@ func InternalError(ctx context.Context, err error) *connectrpc.Error {
 		log.Printf("go-service-template: internal error: %v", err)
 	}
 
-	return connectrpc.NewError(connectrpc.CodeInternal, errInternal)
+	return connectrpc.NewError(connectrpc.CodeInternal, errInternal) //nolint:forbidigo // the one place that builds internal errors
 }
 
 // Service is the Connect transport implementation of GreetService.
