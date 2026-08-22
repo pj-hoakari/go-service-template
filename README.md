@@ -137,23 +137,22 @@ mise install
 task proto
 ```
 
-<<<<<<< HEAD
 ### PostgreSQL を使った開発
 
 Docker Compose で PostgreSQL、golang-migrate によるマイグレーション、および開発サーバーを起動できる
-=======
-### Docker Compose での起動
-
-Docker Compose で開発サーバーを起動できる
->>>>>>> origin/main
 
 ```bash
 docker compose up --build
 ```
 
-<<<<<<< HEAD
-サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける  
+もしくは
+```bash
+task up:build
+```
+
+サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける（停止は `task down`）  
 アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
+RPC を呼び出すには内部 JWT が必要なので、`cmd/jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）  
 ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
 
 ```bash
@@ -169,14 +168,6 @@ task migrate:version
 
 repository の PostgreSQL 実装（`internal/infra/db`）は `internal/tenantctx` によるテナントガード付きで、context に認証済みテナント公開 ID が無い書き込みは fail-closed で拒否する  
 統合テスト（`internal/infra/db/postgres_test.go`）は testcontainers で PostgreSQL コンテナを起動し、`migrations/` の up SQL を適用した DB に対して検証する（`go test ./...` の実行に Docker が必要）
-=======
-もしくは
-```bash
-task up:build
-```
-
-サーバーは `http://localhost:8080` で待ち受ける（停止は `task down`）  
-RPC を呼び出すには内部 JWT が必要なので、`cmd/jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）
 
 ### トレースの確認（Jaeger）
 
@@ -202,7 +193,6 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 - Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。API Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
 - interceptor は authz interceptor の後段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）は span にならない
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
->>>>>>> origin/main
 
 ### connect-es の生成
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
