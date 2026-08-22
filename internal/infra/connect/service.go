@@ -6,6 +6,7 @@ import (
 	"log"
 
 	connectrpc "connectrpc.com/connect"
+	"go.opentelemetry.io/otel/trace"
 
 	greetv1 "github.com/pj-hoakari/go-service-template/gen/greet/v1"
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
@@ -16,19 +17,33 @@ import (
 // errInternal is the only detail a client learns about an internal failure.
 var errInternal = errors.New("internal error")
 
-// internalError reports a failure the client can do nothing about. The cause
-// is written to the server log and replaced by a fixed message, so that no
-// internal detail leaves the service.
-func internalError(err error) *connectrpc.Error {
-	log.Printf("go-service-template: internal error: %v", err)
+// InternalError reports a failure the client can do nothing about. The cause is
+// written to the server log and replaced by a fixed message, so that no
+// internal detail leaves the service. When the request carries a span, the log
+// line names its trace ID, so an operator can find the failure in the trace it
+// belongs to.
+//
+// A cancelled or timed-out request is the client going away rather than a
+// server fault, so it keeps its own code and is not logged.
+//
+// It is exported for the other transports of this process, so that every
+// service answers an internal failure the same way.
+func InternalError(ctx context.Context, err error) *connectrpc.Error {
+	if errors.Is(err, context.Canceled) {
+		return connectrpc.NewError(connectrpc.CodeCanceled, err)
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return connectrpc.NewError(connectrpc.CodeDeadlineExceeded, err)
+	}
+
+	if spanContext := trace.SpanFromContext(ctx).SpanContext(); spanContext.IsValid() {
+		log.Printf("go-service-template: internal error: %v trace_id=%s", err, spanContext.TraceID())
+	} else {
+		log.Printf("go-service-template: internal error: %v", err)
+	}
 
 	return connectrpc.NewError(connectrpc.CodeInternal, errInternal)
-}
-
-// InternalError exposes internalError to the other transports of this process,
-// so that every service answers an internal failure the same way.
-func InternalError(err error) *connectrpc.Error {
-	return internalError(err)
 }
 
 // Service is the Connect transport implementation of GreetService.
@@ -53,7 +68,7 @@ func (s *Service) Greet(ctx context.Context, req *connectrpc.Request[greetv1.Gre
 			return nil, connectrpc.NewError(connectrpc.CodeInvalidArgument, err)
 		}
 
-		return nil, internalError(err)
+		return nil, InternalError(ctx, err)
 	}
 
 	return connectrpc.NewResponse(&greetv1.GreetResponse{
