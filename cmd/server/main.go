@@ -70,7 +70,7 @@ func run() error {
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			log.Printf("go-service-template: close database: %v", err)
+			slog.Error("close database failed", "error", err)
 		}
 	}()
 
