@@ -76,7 +76,6 @@ mv renovate.example.json renovate.json
 
 ### 4. その他
 
-- `cmd/server/main.go` / `internal/infra/connect/service.go` のログ文字列 `go-service-template: ...`
 - `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
