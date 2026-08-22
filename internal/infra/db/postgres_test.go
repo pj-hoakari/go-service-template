@@ -17,6 +17,11 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
 var testDB *sqlx.DB
@@ -43,8 +48,8 @@ func TestMain(m *testing.M) {
 
 	databaseURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err == nil {
-		// Open is the same entry point the server uses, so the repository tests
-		// also cover the shared connection setup.
+		// Open is the same instrumented entry point the server uses, so the
+		// repository tests also cover the OpenTelemetry driver wrapper.
 		testDB, err = Open(ctx, databaseURL)
 	}
 
@@ -111,6 +116,59 @@ func TestPostgresGreetingRepositoryRecordRequiresTenant(t *testing.T) {
 	}
 }
 
+func TestPostgresGreetingRepositoryRecordNormalizesQueryText(t *testing.T) {
+	// otel.SetTracerProvider mutates global state, so this test must not run
+	// in parallel. otelsql keeps the delegating global provider it saw in
+	// Open, which forwards to whatever is installed here.
+	recorder := tracetest.NewSpanRecorder()
+	previousProvider := otel.GetTracerProvider()
+
+	otel.SetTracerProvider(sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder)))
+	t.Cleanup(func() { otel.SetTracerProvider(previousProvider) })
+
+	repository := newTestRepository(t)
+	ctx := tenantctx.WithTenantPublicID(context.Background(), "a1b2c3d4e5f60718")
+
+	greeting, err := domain.NewGreeting("Ada")
+	if err != nil {
+		t.Fatalf("NewGreeting() error = %v", err)
+	}
+
+	if err := repository.Record(ctx, greeting); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	// The repository writes the statement as a multi-line raw string literal,
+	// so this exact value also proves the newlines and tabs are gone.
+	const wantQueryText = "INSERT INTO greetings (tenant_public_id, name) VALUES ($1, $2)"
+
+	var (
+		insertSpan sdktrace.ReadOnlySpan
+		spanNames  []string
+	)
+
+	for _, span := range recorder.Ended() {
+		spanNames = append(spanNames, span.Name())
+
+		if queryText, ok := spanAttribute(span, semconv.DBQueryTextKey); ok && queryText == wantQueryText {
+			insertSpan = span
+		}
+	}
+
+	if insertSpan == nil {
+		t.Fatalf("span with %s = %q not found, recorded spans = %v", semconv.DBQueryTextKey, wantQueryText, spanNames)
+	}
+
+	system, ok := spanAttribute(insertSpan, semconv.DBSystemNameKey)
+	if !ok {
+		t.Fatalf("%s on span %q = missing, want %q", semconv.DBSystemNameKey, insertSpan.Name(), "postgresql")
+	}
+
+	if system != "postgresql" {
+		t.Fatalf("%s on span %q = %q, want %q", semconv.DBSystemNameKey, insertSpan.Name(), system, "postgresql")
+	}
+}
+
 type greetingRow struct {
 	TenantPublicID string `db:"tenant_public_id"`
 	Name           string `db:"name"`
@@ -124,6 +182,16 @@ func newTestRepository(t *testing.T) *PostgresGreetingRepository {
 	}
 
 	return NewPostgresGreetingRepository(testDB)
+}
+
+func spanAttribute(span sdktrace.ReadOnlySpan, key attribute.Key) (string, bool) {
+	for _, attr := range span.Attributes() {
+		if attr.Key == key {
+			return attr.Value.AsString(), true
+		}
+	}
+
+	return "", false
 }
 
 func migrationPath() string {
