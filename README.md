@@ -25,7 +25,47 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 
 ## テンプレート利用時の初期設定
 
-開発を始める前にプロジェクト向けに変更する必要がある
+開発を始める前にプロジェクト向けに変更する必要がある  
+大部分は `task bootstrap` で自動化できる
+
+### 自動セットアップ（task bootstrap）
+
+テンプレートから作成した新しいリポジトリのクローンで実行する  
+`WITH_OPTION=db` を使う場合は、リポジトリ作成時に「Include all branches」を選び、`with-db` ブランチを含めておく必要がある
+
+```bash
+mise trust
+mise install
+```
+
+DB なし
+```bash
+task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=none
+```
+
+DB あり（origin/with-db をマージ）
+```bash
+task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=db
+```
+
+bootstrap は次を行う
+
+- `WITH_OPTION=db` のとき `origin/with-db` を `--no-commit` でマージする
+- origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は除外し、再生成で追従させる）
+- `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分などが追従する）
+- `go mod tidy`、`clients/connect-es` の `npm install`、`task proto` で生成物とロックファイルを同期する
+- `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
+- `sync-with-*.yml` とローカルの `with-*` ブランチを削除する
+- 完了時に Taskfile.yml から bootstrap タスク自身を削除する
+
+変更はコミットされないので、内容を確認して自分でコミットする  
+途中で失敗した場合はタスクが残るので、原因を直して再実行できる
+
+次の項目は bootstrap の対象外なので手動で行う
+
+- npm スコープ `@pj-hoakari`（`clients/connect-es/package.json` の `name` と `publish-client-es.yml` の `scope`）
+- リモートの `with-db` ブランチの削除（bootstrap が削除するのはローカルブランチと同期用 workflow のみ）
+- README の書き換え
 
 ### 1. Go モジュールパス
 
@@ -86,19 +126,30 @@ mv renovate.example.json renovate.json
 
 ## 初期設定チェックリスト
 
-- [ ] Go モジュールパスを `github.com/<owner>/<repo>` に置換（`go.mod` / `cmd/**` / `internal/**` / `buf.gen.go.yaml`）
-- [ ] `go mod tidy` を実行
-- [ ] `task proto:gen:go` で connect-go を再生成し、`gen/` をコミット
+`task bootstrap` を使った場合、`bootstrap: `と記した項目は済んでいる
 
-- [ ] connect-es の `package.json`（`name` / `description` / `repository.url`）を更新
-- [ ] `clients/connect-es` で `npm install` を実行し `package-lock.json` を同期
+- [ ] bootstrap: Go モジュールパスを `github.com/<owner>/<repo>` に置換（`go.mod` / `cmd/**` / `internal/**` / `buf.gen.go.yaml`）
+- [ ] bootstrap: `go mod tidy` を実行
+- [ ] bootstrap: `task proto:gen:go` で connect-go を再生成
+- [ ] bootstrap: `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME` を更新
+
+- [ ] bootstrap: connect-es の `package.json`（`name` / `description` / `repository.url`）を更新
+- [ ] bootstrap: `clients/connect-es` で `npm install` を実行し `package-lock.json` を同期
+
+- [ ] bootstrap: `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
+- [ ] bootstrap: `sync-with-*.yml` とローカルの with-* ブランチを削除
+
+下記は手動対応/確認が必要
+- [ ] `clients/connect-es/package.json` の `name` のスコープを `@<owner>` に変更
 - [ ] `publish-client-es.yml` の `scope` を `@<owner>` に変更
+- [ ] リモートリポジトリの with-* ブランチを削除
 
-- [ ] `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
-- [ ] `sync-with-db.yml` と with-db ブランチを削除（派生リポジトリでは不要）
-
-- [ ] `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`
 - [ ] README のテンプレート説明を書き換え
+
+リモートリポジトリのテンプレートブランチ削除は下記
+```bash
+git push origin --delete with-db
+```
 
 ---
 
