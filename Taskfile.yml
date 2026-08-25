@@ -113,7 +113,9 @@ tasks:
             - go mod tidy
             - npm install --prefix clients/connect-es
             - task: proto
-            - git branch -d with-{{.WITH_OPTION}} 2>/dev/null || true
+            - git branch -d with-db 2>/dev/null || true
+            - mv renovate.example.json renovate.json
+            - git rm .github/workflows/sync-with-db.yml
             - |
                 sed -i '/^# --- bootstrap task: removes itself (from this line to EOF) on completion. Keep it last. ---$/,$d' Taskfile.yml
                 sed -i -e '${/^[[:space:]]*$/d}' Taskfile.yml
