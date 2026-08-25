@@ -78,6 +78,7 @@ tasks:
         generates:
             - "clients/connect-es/gen/**/*"
 
+# --- bootstrap task: removes itself (from this line to EOF) on completion. Keep it last. ---
     bootstrap:
         desc: Bootstrap a new service repository created from this template.
         vars:
@@ -113,3 +114,6 @@ tasks:
             - npm install --prefix clients/connect-es
             - task: proto
             - git branch -d with-{{.WITH_OPTION}} 2>/dev/null || true
+            - |
+                sed -i '/^# --- bootstrap task: removes itself (from this line to EOF) on completion. Keep it last. ---$/,$d' Taskfile.yml
+                sed -i -e '${/^[[:space:]]*$/d}' Taskfile.yml
