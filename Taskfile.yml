@@ -78,7 +78,7 @@ tasks:
         generates:
             - "clients/connect-es/gen/**/*"
 
-# --- bootstrap task: removes itself (from this line to EOF) on completion. Keep it last. ---
+# --- bootstrap task: begin (this block removes itself on completion) ---
     bootstrap:
         desc: Bootstrap a new service repository created from this template.
         vars:
@@ -117,5 +117,6 @@ tasks:
             - mv renovate.example.json renovate.json
             - git rm .github/workflows/sync-with-db.yml
             - |
-                sed -i '/^# --- bootstrap task: removes itself (from this line to EOF) on completion. Keep it last. ---$/,$d' Taskfile.yml
+                sed -i '/^# --- bootstrap task: begin (this block removes itself on completion) ---$/,/^# --- bootstrap task: end ---$/d' Taskfile.yml
                 sed -i -e '${/^[[:space:]]*$/d}' Taskfile.yml
+# --- bootstrap task: end ---
