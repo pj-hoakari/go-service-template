@@ -10,8 +10,8 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - PostgreSQL による永続化（sqlx + pgx、`DATABASE_URL` で接続先を指定、repository インターフェース + `internal/infra/db` の実装）
 - golang-migrate によるマイグレーション（`migrations/` + `task migrate:*` タスク）と Docker Compose（postgres → migrate → server）
 - testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
-- API Gateway 発行の内部 JWT の検証（JWKS 取得 + ES256、`INTERNAL_JWKS_URL` で JWKS エンドポイントを指定）
-- 開発・テスト用の JWT / JWKS 生成 CLI（`cmd/jwtgen`）と mockgen によるモック生成
+- Service Gateway 発行の内部 JWT の検証と RPC ごとの認可（`internal-jwt-handling` による JWKS 取得 + ES256 検証。`INTERNAL_JWKS_URL` / `INTERNAL_JWT_ISSUER` / `INTERNAL_JWT_AUDIENCE` で設定）
+- 開発・テスト用の JWT / JWKS 生成 CLI（`internal-jwt-handling` 同梱の `go tool jwtgen`）とモック生成用の mockgen（`go.mod` の `tool`）
 - OpenTelemetry によるトレーシング（Connect interceptor + otelsql + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
 - `log/slog` による構造化ログ（Cloud Logging 互換の JSON。`internal/logging`。トレース有効時はトレース ID / スパン ID をレコードに付与）
 - マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
@@ -74,8 +74,8 @@ bootstrap は次を行う
 | ファイル | 箇所 | 内容 |
 | --- | --- | --- |
 | `go.mod` | `module` 行 | モジュールパス |
-| `cmd/server/main.go` / `cmd/jwtgen/main.go` | import | `.../internal/*` の参照 |
-| `internal/**`（`internal/infra/connect` / `internal/jwks` など） | import | 内部パッケージ間の参照 |
+| `cmd/server/main.go` | import | `.../internal/*` の参照 |
+| `internal/**`（`internal/infra/connect` / `internal/tenantctx` など） | import | 内部パッケージ間の参照 |
 | `buf.gen.go.yaml` | `go_package_prefix` | 生成コードのパッケージ接頭辞 |
 
 生成物（`gen/`）を除いて一括置換
@@ -164,13 +164,11 @@ internal/
   application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain / repository を使う）
   repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
-    connect/          Connect transport（ハンドラ・authz verifier・interceptor。application に依存）
+    connect/          Connect transport（ハンドラ・認証/認可 interceptor の配線。application に依存）
     db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード）
-  jwks/               内部 JWT の検証（JWKS 取得 + ES256）
-  jwtgen/             開発・テスト用の JWT / JWKS 生成
   logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
-  tenantctx/          テナント公開 ID の context 注入・検証
+  tenantctx/          検証済み内部 JWT からの主体（`sub`）とテナント公開 ID の参照・検証
 migrations/           golang-migrate 形式のマイグレーション SQL（up/down のペア）
 gen/                  buf による生成コード（手動編集しない）
 ```
@@ -203,7 +201,7 @@ task up:build
 
 サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける（停止は `task down`）  
 アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
-RPC を呼び出すには内部 JWT が必要なので、`cmd/jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）  
+RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）  
 ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
 
 ```bash
@@ -241,8 +239,8 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 - `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` または `OTEL_EXPORTER_OTLP_ENDPOINT` が設定されているときだけ OTLP/HTTP で span を export する。未設定なら no-op provider で動作し、エラーにはならない（トレーシングはデプロイ環境の opt-in）
 - `service.name` は `OTEL_SERVICE_NAME`（デフォルト: `telemetry.DefaultServiceName` = `go-service-template`）
 - ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する
-- Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。API Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
-- interceptor は authz interceptor の後段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）は span にならない
+- Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。Service Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
+- interceptor は認証の前段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）も span として記録される
 - PostgreSQL へのクエリは `otelsql` でラップした pgx ドライバ（`internal/infra/db/open.go`）で span になり、空白・改行を 1 つの空白に正規化した SQL 文（`db.query.text`）を属性に持つ。RPC span の子として表示される
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
 
@@ -261,37 +259,58 @@ Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
 ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
 
-### greet service の authz interceptor（内部 JWT 検証）
+### 内部 JWT の検証と RPC ごとの認可
 
-`Greet` は proto の policy annotation により `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する  
-`internal/infra/connect` では、生成された `NewGreetServiceHandlerWithAuthz` に、API Gateway 発行の内部 JWT（ES256）を JWKS で検証する verifier を渡す（`AUTH_LEVEL_PUBLIC` の RPC は検証をスキップ）
+認証・認可は外部モジュール `github.com/pj-hoakari/internal-jwt-handling` に委ねる  
+proto の policy annotation から `protoc-gen-authz-go` が生成するのは procedure ごとの policy 表（`gen/greet/v1/greetv1connect/greet.authz.connect.go` の `GreetServicePolicies`）で、`internal-jwt-handling/interceptor` がこれを読んで Service Gateway 発行の内部 JWT を検証し、`token_use` と宣言された scope を突合する  
+検証済みのクレームは request context に載り、ハンドラ以降から参照できる（「テナント ID の参照」を参照）
 
-- JWKS の取得先は環境変数 `INTERNAL_JWKS_URL`（デフォルト: `http://gateway:8080/.well-known/jwks.json`）で指定し、取得結果は 5 分間キャッシュされる
-- issuer / audience / token_use の期待値は `internal/infra/connect/auth.go` の定数（`api-gateway` / `go-service-template` / `access`）。サービスに合わせて変更する（RPC ごとに token_use を変える場合は procedure 名で分岐する）
-- `src_jti`（変換元外部トークンの jti。IdP 監査ログとの相関用）は必須クレームとして非空を検証する
-- ハンドラは `NewHandler(greetService)` → `NewHandlerWithJWKSURL(greetService, jwksURL)` → `NewHandlerWithValidator(greetService, validator)` の段階的コンストラクタで構成され（`greetService` は `application.GreetUseCases`。いずれも `(http.Handler, error)` を返し、tracing interceptor の生成に失敗するとエラー）、テストでは validator（mockgen 生成の `MockJWTValidator`）や JWKS URL を差し替えられる
+- 主な検証項目は ES256 の署名、`kid`、`iss`、`aud`、`exp`／`nbf`、`token_use`、`tenant_id` の束縛である。JWKS の取得・キャッシュ・リトライ・レート制限は `jwks.Cache` が持つ
+- 既定の `token_use` は `AUTH_LEVEL_AUTHENTICATED` が `tenant_access`、`AUTH_LEVEL_INTERNAL` が `service` で、これと異なる RPC は proto の `token_uses` で宣言する
+- `service` トークンは scope の検査を行わない
+- proto の annotation（`authz.v1.service_auth_policy` / `authz.v1.auth_policy` の `level`・`required_scopes`・`token_uses`）は宣言のみで、強制は interceptor が行う
+- 未認証と `token_use` の不一致は `CodeUnauthenticated`、scope 不足は `CodePermissionDenied` を返す。拒否理由はクライアントには返さず、`internal JWT rejected` として `slog.Warn` でサーバー側にのみ記録する
+- `Greet` は `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する。`token_uses` は宣言しておらず、既定の `tenant_access` に従う
 
-ローカルでの動作確認には `cmd/jwtgen` でトークンと JWKS を生成する
+期待値は `cmd/server/main.go` が読む環境変数で設定する
+
+| 環境変数 | デフォルト | 内容 |
+| --- | --- | --- |
+| `INTERNAL_JWKS_URL` | `http://gateway:8080/.well-known/jwks.json` | JWKS の取得先 |
+| `INTERNAL_JWT_ISSUER` | `service-gateway` | 期待する `iss` |
+| `INTERNAL_JWT_AUDIENCE` | `go-service-template` | 期待する `aud` |
+
+ハンドラは `NewHandlerWithJWTSettings(greetService, settings)` → `NewHandlerWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成される（`greetService` は `application.GreetUseCases`）  
+前者は `JWTSettings{JWKSURL, Issuer, Audience}`（既定値は `DefaultJWTSettings()`、`cmd/server` はこれを環境変数で上書きする）の JWKS URL から `jwks.Cache` と `verifier.Verifier` を組み立てる本番向けの入口で、テストでは後者に verifier を差し替えて渡す  
+既定値の定数は `internal/infra/connect/server.go` の `DefaultInternalJWKSURL` / `DefaultInternalJWTIssuer` / `DefaultInternalJWTAudience` である
+
+ローカルでの動作確認には `internal-jwt-handling` 同梱の jwtgen CLI でトークンと JWKS を生成する  
+`go.mod` の `tool` に登録してあるので `go tool jwtgen` で実行できる
 
 ```bash
 # ES256 の内部 JWT と対応する JWKS ドキュメントを JSON で出力
-go run ./cmd/jwtgen -scope greeting.read -ttl 10m
-
-# フラグ: -issuer / -audience / -token-use / -tenant-public-id / -scope / -kid / -ttl
-# -tenant-public-id は任意（空なら tenant_id クレームを省略）
+go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef -scope greeting.read -ttl 10m
 ```
 
-出力の `jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる
+- `-token-use` は `tenant_access`（既定）、`event_access`、`registration`、`service` を取る
+- `tenant_access` では `-tenant-public-id`（ランダムな 16 文字 hex）と `-scope` が必須である
+- `-issuer` の既定は `service-gateway`、`-audience` に既定はないので `go-service-template` を明示する
+- そのほかのフラグは `-event-public-id`、`-origin-sub`、`-subject`、`-txn`、`-kid`（既定 `test-key`）、`-ttl`（既定 2 分）である
 
-`JWTValidator` インターフェースのモックは `go generate ./...` で再生成する（`go tool mockgen` を使用）
+出力は `token` / `claims` / `jwks` を持つ JSON である  
+`jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる  
+サービスのテストも同じ生成ロジック（`internal-jwt-handling/jwtgen`）を使用する
 
-### テナントIDのコンテキスト注入（tenantctx）
+### 認証済み主体の参照（tenantctx）
 
-内部 JWT の `tenant_id` クレーム（テナントの 16 文字 hex 公開 ID）は、Connect interceptor（`internal/infra/connect/tenant_id_interceptor.go`、`connect.WithInterceptors` で配線）が検証済みクレームから取り出し、`internal/tenantctx` 経由で request context に注入する
+内部 JWT のクレーム（主体の `sub`、テナントの 16 文字 hex 公開 ID である `tenant_id`）は、`internal-jwt-handling` の interceptor が検証済みクレームとして request context に載せる  
+`internal/tenantctx` はそのクレーム（`internaljwt.ClaimsFromContext`）から認可判断に使う値だけを読み取る読み取り専用パッケージで、context への注入は行わない
 
-- 注入は fail-closed: 全サービスは原則テナント必須のため、`token_use` が `access` かつ `tenant_id` が非空のトークンを持たないリクエストは `CodeUnauthenticated` で拒否する
-- テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、PUBLIC エンドポイント等）を持つサービスは、`tenantIDNotRequired` に procedure 名を列挙して除外する
-- ハンドラ / ユースケースは `tenantctx.TenantPublicIDFromContext(ctx)` で参照する。テナント対象操作の認可には `tenantctx.Ensure`（fail-closed）、永続化から復元したモデルの防衛的チェックには `tenantctx.VerifyOwnership`（fail-open）を使う
+- ハンドラ / ユースケースは `tenantctx.TenantPublicIDFromContext(ctx)` で参照する。値は前後の空白を除いて返し、空なら `ok=false` になる
+- 認証済み主体（内部 JWT の `sub`）は `tenantctx.SubjectFromContext(ctx)` で参照する。テナントと同じく前後の空白を除いて返し、空なら `ok=false` になる
+- テナント対象操作の認可には `tenantctx.Ensure`（fail-closed）、永続化から復元したモデルの防衛的チェックには `tenantctx.VerifyOwnership`（fail-open）を使う
+- テナントが必ず存在することは、`tenant_access` トークンは `tenant_id` を必ず持つというモジュール側の束縛検証と、RPC ごとのポリシー（既定の `token_use` が `tenant_access`）から来る
+- テナント非依存の RPC（セルフサインアップ、サービス間呼び出し、公開エンドポイント等）は、proto の `token_uses`（`service` や `registration`）や `AUTH_LEVEL_PUBLIC` で宣言する
 - 参照は `internal/tenantctx` を直接 import する。
 
 ### エラー

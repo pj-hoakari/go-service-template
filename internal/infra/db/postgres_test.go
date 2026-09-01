@@ -14,6 +14,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pj-hoakari/go-service-template/internal/domain"
 	"github.com/pj-hoakari/go-service-template/internal/tenantctx"
+	internaljwt "github.com/pj-hoakari/internal-jwt-handling"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -70,7 +71,7 @@ func TestMain(m *testing.M) {
 
 func TestPostgresGreetingRepositoryRecord(t *testing.T) {
 	repository := newTestRepository(t)
-	ctx := tenantctx.WithTenantPublicID(context.Background(), "a1b2c3d4e5f60718")
+	ctx := internaljwt.ContextWithClaims(context.Background(), internaljwt.Claims{TenantPublicID: "a1b2c3d4e5f60718"})
 
 	greeting, err := domain.NewGreeting("Ada")
 	if err != nil {
@@ -127,7 +128,7 @@ func TestPostgresGreetingRepositoryRecordNormalizesQueryText(t *testing.T) {
 	t.Cleanup(func() { otel.SetTracerProvider(previousProvider) })
 
 	repository := newTestRepository(t)
-	ctx := tenantctx.WithTenantPublicID(context.Background(), "a1b2c3d4e5f60718")
+	ctx := internaljwt.ContextWithClaims(context.Background(), internaljwt.Claims{TenantPublicID: "a1b2c3d4e5f60718"})
 
 	greeting, err := domain.NewGreeting("Ada")
 	if err != nil {

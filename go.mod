@@ -4,6 +4,7 @@ go 1.26.3
 
 tool (
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	github.com/pj-hoakari/internal-jwt-handling/cmd/jwtgen
 	github.com/pj-hoakari/protoc-gen-authz-go/cmd/protoc-gen-authz-go
 	go.uber.org/mock/mockgen
 	google.golang.org/protobuf/cmd/protoc-gen-go
@@ -14,7 +15,7 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
-require github.com/pj-hoakari/protoc-gen-authz-go v0.2.0
+require github.com/pj-hoakari/protoc-gen-authz-go v0.3.0
 
 require (
 	connectrpc.com/otelconnect v0.9.0
@@ -23,6 +24,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jmoiron/sqlx v1.4.0
+	github.com/pj-hoakari/internal-jwt-handling v0.1.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	go.opentelemetry.io/otel v1.45.0

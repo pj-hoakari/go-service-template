@@ -14,7 +14,6 @@ import (
 	"github.com/pj-hoakari/go-service-template/internal/application"
 	connectinfra "github.com/pj-hoakari/go-service-template/internal/infra/connect"
 	dbinfra "github.com/pj-hoakari/go-service-template/internal/infra/db"
-	"github.com/pj-hoakari/go-service-template/internal/jwks"
 	"github.com/pj-hoakari/go-service-template/internal/logging"
 	"github.com/pj-hoakari/go-service-template/internal/telemetry"
 )
@@ -47,7 +46,10 @@ func run() error {
 	defer stop()
 
 	addr := getenv("SERVER_ADDR", defaultAddr)
-	jwksURL := getenv("INTERNAL_JWKS_URL", jwks.DefaultInternalJWKSURL)
+	jwtSettings := connectinfra.DefaultJWTSettings()
+	jwtSettings.JWKSURL = getenv("INTERNAL_JWKS_URL", jwtSettings.JWKSURL)
+	jwtSettings.Issuer = getenv("INTERNAL_JWT_ISSUER", jwtSettings.Issuer)
+	jwtSettings.Audience = getenv("INTERNAL_JWT_AUDIENCE", jwtSettings.Audience)
 
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -76,7 +78,7 @@ func run() error {
 
 	greetService := application.NewGreetService(dbinfra.NewPostgresGreetingRepository(db))
 
-	handler, err := connectinfra.NewHandlerWithJWKSURL(greetService, jwksURL)
+	handler, err := connectinfra.NewHandlerWithJWTSettings(greetService, jwtSettings)
 	if err != nil {
 		return fmt.Errorf("build handler: %w", err)
 	}
