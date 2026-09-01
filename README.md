@@ -165,7 +165,7 @@ internal/
   repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・認証/認可 interceptor の配線。application に依存）
-    db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード）
+    db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード、context に結びついたトランザクション）
   logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
   tenantctx/          検証済み内部 JWT からの主体（`sub`）とテナント公開 ID の参照・検証
@@ -218,6 +218,8 @@ task migrate:version
 ```
 
 repository の PostgreSQL 実装（`internal/infra/db`）は `internal/tenantctx` によるテナントガード付きで、context に認証済みテナント公開 ID が無い書き込みは fail-closed で拒否する  
+`internal/infra/db` の `RunInTransaction` は context に結びついたトランザクションを開き、repository は `Executor(ctx, db)` 経由で文を実行するので、その context で呼ばれた repository の処理は同じトランザクションに参加する（入れ子の呼び出しは外側に合流する）  
+デッドロック・直列化失敗による中断は `ErrTransactionAborted` を join して返すので、トランザクションを使う RPC では `CodeAborted` で応答して再試行を促す（このテンプレートの Greet はトランザクションを使わないため、その変換は配線していない）  
 統合テスト（`internal/infra/db/postgres_test.go`）は testcontainers で PostgreSQL コンテナを起動し、`migrations/` の up SQL を適用した DB に対して検証する（`go test ./...` の実行に Docker が必要）
 
 ### トレースの確認（Jaeger）

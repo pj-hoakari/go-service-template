@@ -29,7 +29,9 @@ func (r *PostgresGreetingRepository) Record(ctx context.Context, greeting domain
 		return tenantctx.ErrMissing
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+	// The statement goes through Executor, so it joins the transaction opened
+	// by a surrounding RunInTransaction when there is one.
+	_, err := Executor(ctx, r.db).ExecContext(ctx, `
 		INSERT INTO greetings (tenant_public_id, name)
 		VALUES ($1, $2)`,
 		tenantPublicID, greeting.Name())

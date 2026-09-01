@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 		postgres.WithDatabase("go_service_template"),
 		postgres.WithUsername("go_service_template"),
 		postgres.WithPassword("go_service_template"),
-		postgres.WithInitScripts(migrationPath()),
+		postgres.WithInitScripts(migrationPaths()...),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
@@ -117,6 +117,48 @@ func TestPostgresGreetingRepositoryRecordRequiresTenant(t *testing.T) {
 	}
 }
 
+// TestPostgresGreetingRepositoryRecordJoinsTransaction proves the repository
+// runs its statement through Executor: the write is rolled back with the
+// surrounding transaction and only lands once that transaction commits.
+func TestPostgresGreetingRepositoryRecordJoinsTransaction(t *testing.T) {
+	repository := newTestRepository(t)
+	ctx := internaljwt.ContextWithClaims(context.Background(), internaljwt.Claims{TenantPublicID: "a1b2c3d4e5f60718"})
+
+	greeting, err := domain.NewGreeting("Ada")
+	if err != nil {
+		t.Fatalf("NewGreeting() error = %v", err)
+	}
+
+	errAbort := errors.New("abort")
+
+	// The callback must return rather than call t.Fatal: a Goexit would skip
+	// the rollback and leave the transaction holding its lock on greetings.
+	err = RunInTransaction(ctx, testDB, func(ctx context.Context) error {
+		if err := repository.Record(ctx, greeting); err != nil {
+			return fmt.Errorf("record greeting: %w", err)
+		}
+
+		return errAbort
+	})
+	if !errors.Is(err, errAbort) {
+		t.Fatalf("RunInTransaction() error = %v, want %v", err, errAbort)
+	}
+
+	if count := countGreetings(ctx, t); count != 0 {
+		t.Errorf("greetings count after rollback = %d, want 0", count)
+	}
+
+	if err := RunInTransaction(ctx, testDB, func(ctx context.Context) error {
+		return repository.Record(ctx, greeting)
+	}); err != nil {
+		t.Fatalf("RunInTransaction() error = %v", err)
+	}
+
+	if count := countGreetings(ctx, t); count != 1 {
+		t.Errorf("greetings count after commit = %d, want 1", count)
+	}
+}
+
 func TestPostgresGreetingRepositoryRecordNormalizesQueryText(t *testing.T) {
 	// otel.SetTracerProvider mutates global state, so this test must not run
 	// in parallel. otelsql keeps the delegating global provider it saw in
@@ -185,6 +227,17 @@ func newTestRepository(t *testing.T) *PostgresGreetingRepository {
 	return NewPostgresGreetingRepository(testDB)
 }
 
+func countGreetings(ctx context.Context, t *testing.T) int {
+	t.Helper()
+
+	var count int
+	if err := testDB.GetContext(ctx, &count, `SELECT COUNT(*) FROM greetings`); err != nil {
+		t.Fatalf("count greetings: %v", err)
+	}
+
+	return count
+}
+
 func spanAttribute(span sdktrace.ReadOnlySpan, key attribute.Key) (string, bool) {
 	for _, attr := range span.Attributes() {
 		if attr.Key == key {
@@ -195,11 +248,24 @@ func spanAttribute(span sdktrace.ReadOnlySpan, key attribute.Key) (string, bool)
 	return "", false
 }
 
-func migrationPath() string {
+func migrationPaths() []string {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		panic("locate test source file")
 	}
 
-	return filepath.Join(filepath.Dir(filename), "..", "..", "..", "migrations", "000001_init.up.sql")
+	pattern := filepath.Join(filepath.Dir(filename), "..", "..", "..", "migrations", "*.up.sql")
+
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		panic(fmt.Sprintf("glob migration files %s: %v", pattern, err))
+	}
+
+	if len(paths) == 0 {
+		panic(fmt.Sprintf("no migration files match %s", pattern))
+	}
+
+	slices.Sort(paths)
+
+	return paths
 }
