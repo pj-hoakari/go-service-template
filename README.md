@@ -14,7 +14,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - 開発・テスト用の JWT / JWKS 生成 CLI（`internal-jwt-handling` 同梱の `go tool jwtgen`）とモック生成用の mockgen（`go.mod` の `tool`）
 - OpenTelemetry によるトレーシング（Connect interceptor + otelsql + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
 - `log/slog` による構造化ログ（Cloud Logging 互換の JSON。`internal/logging`。トレース有効時はトレース ID / スパン ID をレコードに付与）
-- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
+- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）、`migrate` ターゲットから golang-migrate CLI + `migrations/` を同梱した migrate イメージもサーバーイメージと並べて公開
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
 - connect-es クライアントの npm publish ワークフロー
@@ -200,6 +200,8 @@ task up:build
 ```
 
 サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける（停止は `task down`）  
+Compose の `migrate` サービスは `Dockerfile` の `migrate` ターゲット（後述の「イメージからマイグレーションを実行する」を参照）をビルドして起動するため、`migrations/` を追加・変更したあとは `--build` 付き（`docker compose up --build` または `task up:build`）で起動し直す  
+`task up` はイメージを再ビルドしないので、古いマイグレーションのままになる  
 アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
 RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）  
 ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
@@ -321,6 +323,44 @@ go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef 
 ハンドラの内部エラーは `InternalError(ctx, err)`（`internal/infra/connect/service.go`）で組み立てる（他の transport からも同じ関数を使う）  
 エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない  
 `connectrpc.CodeInternal` の直接使用は golangci-lint の `forbidigo` で禁止しており、許可するのは `InternalError` の中だけである
+
+---
+
+## イメージからマイグレーションを実行する
+
+`Dockerfile` の `migrate` ターゲットは golang-migrate CLI のイメージに `migrations/` を `/migrations` として同梱したものである  
+リポジトリを clone しなくても、このイメージだけで DB マイグレーションを実行できる  
+`ENTRYPOINT` は `migrate -path /migrations` なので、利用者は接続先とコマンドだけを引数として渡す
+
+ローカルでビルドする場合は次のとおりである
+
+```bash
+docker build --target migrate -t go-service-template-migrate .
+```
+
+適用は `-database` に接続先を、続けてコマンドを渡す
+
+```bash
+docker run --rm --network host go-service-template-migrate -database "$DATABASE_URL" up
+```
+
+公開イメージは `ghcr.io/pj-hoakari/go-service-template-migrate` で、サーバーのイメージと同じバージョンタグを付ける
+
+```bash
+docker run --rm --network host ghcr.io/pj-hoakari/go-service-template-migrate:<version> -database "$DATABASE_URL" up
+```
+
+そのほかのコマンドも同じ形で渡す
+
+```bash
+# 現在のバージョンを確認
+docker run --rm --network host ghcr.io/pj-hoakari/go-service-template-migrate:<version> -database "$DATABASE_URL" version
+# 1 つ前にロールバック
+docker run --rm --network host ghcr.io/pj-hoakari/go-service-template-migrate:<version> -database "$DATABASE_URL" down 1
+```
+
+golang-migrate CLI は接続先を環境変数からは読まないため、`-database` は必ず引数で渡す  
+`--network host` はコンテナからホスト上の PostgreSQL に接続するための指定であり、接続先がホスト外にあるなら不要である
 
 ---
 
