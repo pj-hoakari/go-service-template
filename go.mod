@@ -4,6 +4,7 @@ go 1.26.3
 
 tool (
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
+	github.com/pj-hoakari/internal-jwt-handling/cmd/jwtgen
 	github.com/pj-hoakari/protoc-gen-authz-go/cmd/protoc-gen-authz-go
 	go.uber.org/mock/mockgen
 	google.golang.org/protobuf/cmd/protoc-gen-go
@@ -14,17 +15,17 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
-require github.com/pj-hoakari/protoc-gen-authz-go v0.2.0
+require github.com/pj-hoakari/protoc-gen-authz-go v0.3.0
 
 require (
 	connectrpc.com/otelconnect v0.9.0
 	github.com/go-logr/logr v1.4.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/pj-hoakari/internal-jwt-handling v0.1.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
-	go.uber.org/mock v0.6.0
 )
 
 require (
@@ -37,6 +38,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.45.0 // indirect
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.uber.org/mock v0.6.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
