@@ -1,6 +1,6 @@
 module github.com/pj-hoakari/go-service-template
 
-go 1.26.3
+go 1.27.0
 
 tool (
 	connectrpc.com/connect/cmd/protoc-gen-connect-go
