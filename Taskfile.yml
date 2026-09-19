@@ -114,7 +114,8 @@ tasks:
             - npm install --prefix clients/connect-es
             - task: proto
             - go mod tidy
-            - mv renovate.example.json renovate.json
+            # Skip when already moved, so that bootstrap can be rerun after a failure.
+            - if [ -f renovate.example.json ]; then mv renovate.example.json renovate.json; fi
             # with-* branches only exist in the template, so drop them from the branches filters
             # (e.g. [main, with-db] -> [main]) along with the workflows that manage them.
             - |
