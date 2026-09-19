@@ -1,5 +1,7 @@
 # go-service-template
 
+<!-- ===== TEMPLATE: begin ===== -->
+
 Connect (connect-go) ベースの Go マイクロサービス開発用テンプレートリポジトリ
 
 - HTTP サーバ（ヘルスチェック `GET /healthz` + graceful shutdown）
@@ -13,8 +15,6 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 - connect-es クライアントの npm publish ワークフロー
 - 生成物の drift-check（connect-go）ワークフロー
 - `mise` による開発ツール（buf / go / task）のバージョン固定
-
----
 
 ## テンプレート利用時の初期設定
 
@@ -45,7 +45,7 @@ bootstrap は次を行う
 
 - `WITH_OPTION=db` のとき `origin/with-db` を `--no-commit` でマージする
 - origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は再生成で追従させ、Taskfile.yml の bootstrap 関連タスクは最後に削除するので、どちらも除外する）
-- `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分などが追従する）
+- `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分、README のタイトルなどが追従する）
 - `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
 - workflow の `branches` フィルタから `with-*` を除く（例: `[main, with-db]` → `[main]`）
@@ -60,7 +60,7 @@ bootstrap は次を行う
 
 - npm スコープ `@pj-hoakari`（`clients/connect-es/package.json` の `name` と `publish-client-es.yml` の `scope`）
 - リモートの `with-db` ブランチの削除（bootstrap が削除するのはローカルブランチと同期用 workflow のみ）
-- README の書き換え
+- README のテンプレート部分（`TEMPLATE: begin` から `TEMPLATE: end` まで）の削除とサービスの説明の追記
 
 ### 1. Go モジュールパス
 
@@ -143,8 +143,6 @@ git grep -lzF go-service-template -- ':!gen' ':!Taskfile.yml' | go run ./scripts
 
 確認が済んだら、Taskfile.yml の `# --- bootstrap task: begin` から `# --- bootstrap task: end ---` までと `scripts/rewrite` を削除する
 
----
-
 ## 初期設定チェックリスト
 
 `task bootstrap` を使った場合、`bootstrap: `と記した項目は済んでいる
@@ -167,16 +165,16 @@ git grep -lzF go-service-template -- ':!gen' ':!Taskfile.yml' | go run ./scripts
 - [ ] `publish-client-es.yml` の `scope` を `@<owner>` に変更
 - [ ] リモートリポジトリの with-* ブランチを削除
 
-- [ ] README のテンプレート説明を書き換え
+- [ ] README の `TEMPLATE: begin` から `TEMPLATE: end` までを削除し、サービスの説明を書く
 
 リモートリポジトリのテンプレートブランチ削除は下記
 ```bash
 git push origin --delete with-db
 ```
 
----
+## 実装の概要
 
-## ディレクトリ構成
+### ディレクトリ構成
 
 レイヤードアーキテクチャを採用している
 
@@ -193,80 +191,29 @@ internal/
 gen/                  buf による生成コード（手動編集しない）
 ```
 
----
-
-## 開発
-
-### セットアップ
-miseを使用して開発環境をセットアップ
-
-```bash
-mise trust
-mise install
-task proto
-```
-
-### Docker Compose での起動
-
-Docker Compose で開発サーバーを起動できる
-
-```bash
-docker compose up --build
-```
-
-もしくは
-```bash
-task up:build
-```
-
-サーバーは `http://localhost:8080` で待ち受ける（停止は `task down`）  
-RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）
-
-### トレースの確認（Jaeger）
-
-監視スタックはオーバーライドファイル `compose.o11y.yml` を重ねたときだけ有効になる  
-Jaeger が起動し、`server` に OTLP エクスポート用の環境変数（`OTEL_EXPORTER_OTLP_ENDPOINT` など）がセットされる
-
-```bash
-docker compose -f compose.yml -f compose.o11y.yml up --build
-```
-
-もしくは
-```bash
-task up:build:o11y
-```
-
-Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
+### トレーシング
 
 トレーシングの配線は `internal/telemetry` にあり、`cmd/server/main.go` の起動時に `telemetry.Setup` で global tracer provider と W3C Trace Context / Baggage propagator を設定する
 
-- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` または `OTEL_EXPORTER_OTLP_ENDPOINT` が設定されているときだけ OTLP/HTTP で span を export する。未設定なら no-op provider で動作し、エラーにはならない（トレーシングはデプロイ環境の opt-in）
-- `service.name` は `OTEL_SERVICE_NAME`（デフォルト: `telemetry.DefaultServiceName` = `go-service-template`）
-- ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する
+- OTLP のエンドポイントが未設定なら no-op provider で動作し、エラーにはならない（トレーシングはデプロイ環境の opt-in）
+- `service.name` のデフォルトは `telemetry.DefaultServiceName`
 - Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。Service Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
 - interceptor は認証の前段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）も span として記録される
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
 
 ### ログ
 
-ログは標準出力へ 1 行 1 件の JSON で書き出し、Cloud Logging がそのまま解釈する構造化フォーマット（`severity`、`message`、`time`）に合わせている  
+ログは Cloud Logging がそのまま解釈する構造化フォーマット（`severity`、`message`、`time`）に合わせている  
 トレースが有効なリクエストでは、その文脈からトレース ID とスパン ID を自動で読み取り、`logging.googleapis.com/trace` などのフィールドとして各レコードに付与する  
 このハンドラは `internal/logging` が提供し、`cmd/server/main.go` の起動時に `slog.SetDefault` で既定のロガーとして設定する  
 `message` や `severity` のような予約キーと同じ名前の属性は、値が上書きされないように `attr_` 接頭辞付きで出力する  
 `net/http` と OpenTelemetry が内部で出すログも同じハンドラに流すので、サーバーのログはこの 1 系統にまとまる
 
-- `LOG_LEVEL`（デフォルト: `info`）: ログに出力する最小レベル。`debug`／`info`／`warn`（`warning` も同義）／`error`／`critical` を取り、未知の値ならサーバーは起動しない
-- `GOOGLE_CLOUD_PROJECT`（デフォルト: なし）: 設定するとログの `logging.googleapis.com/trace` を `projects/<project>/traces/<trace_id>` 形式にし、Cloud Logging でトレースと相関させる。未設定なら素のトレース ID を出力する
-
-### connect-es の生成
-connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
-ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
-
 ### 内部 JWT の検証と RPC ごとの認可
 
 認証・認可は外部モジュール `github.com/pj-hoakari/internal-jwt-handling` に委ねる  
 proto の policy annotation から `protoc-gen-authz-go` が生成するのは procedure ごとの policy 表（`gen/greet/v1/greetv1connect/greet.authz.connect.go` の `GreetServicePolicies`）で、`internal-jwt-handling/interceptor` がこれを読んで Service Gateway 発行の内部 JWT を検証し、`token_use` と宣言された scope を突合する  
-検証済みのクレームは request context に載り、ハンドラ以降から参照できる（「テナント ID の参照」を参照）
+検証済みのクレームは request context に載り、ハンドラ以降から参照できる（「認証済み主体の参照（tenantctx）」を参照）
 
 - 主な検証項目は ES256 の署名、`kid`、`iss`、`aud`、`exp`／`nbf`、`token_use`、`tenant_id` の束縛である。JWKS の取得・キャッシュ・リトライ・レート制限は `jwks.Cache` が持つ
 - 既定の `token_use` は `AUTH_LEVEL_AUTHENTICATED` が `tenant_access`、`AUTH_LEVEL_INTERNAL` が `service` で、これと異なる RPC は proto の `token_uses` で宣言する
@@ -275,34 +222,10 @@ proto の policy annotation から `protoc-gen-authz-go` が生成するのは p
 - 未認証と `token_use` の不一致は `CodeUnauthenticated`、scope 不足は `CodePermissionDenied` を返す。拒否理由はクライアントには返さず、`internal JWT rejected` として `slog.Warn` でサーバー側にのみ記録する
 - `Greet` は `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する。`token_uses` は宣言しておらず、既定の `tenant_access` に従う
 
-期待値は `cmd/server/main.go` が読む環境変数で設定する
-
-| 環境変数 | デフォルト | 内容 |
-| --- | --- | --- |
-| `INTERNAL_JWKS_URL` | `http://gateway:8080/.well-known/jwks.json` | JWKS の取得先 |
-| `INTERNAL_JWT_ISSUER` | `service-gateway` | 期待する `iss` |
-| `INTERNAL_JWT_AUDIENCE` | `go-service-template` | 期待する `aud` |
-
 ハンドラは `NewHandlerWithJWTSettings(greetService, settings)` → `NewHandlerWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成される（`greetService` は `application.GreetUseCases`）  
 前者は `JWTSettings{JWKSURL, Issuer, Audience}`（既定値は `DefaultJWTSettings()`、`cmd/server` はこれを環境変数で上書きする）の JWKS URL から `jwks.Cache` と `verifier.Verifier` を組み立てる本番向けの入口で、テストでは後者に verifier を差し替えて渡す  
-既定値の定数は `internal/infra/connect/server.go` の `DefaultInternalJWKSURL` / `DefaultInternalJWTIssuer` / `DefaultInternalJWTAudience` である
-
-ローカルでの動作確認には `internal-jwt-handling` 同梱の jwtgen CLI でトークンと JWKS を生成する  
-`go.mod` の `tool` に登録してあるので `go tool jwtgen` で実行できる
-
-```bash
-# ES256 の内部 JWT と対応する JWKS ドキュメントを JSON で出力
-go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef -scope greeting.read -ttl 10m
-```
-
-- `-token-use` は `tenant_access`（既定）、`event_access`、`registration`、`service` を取る
-- `tenant_access` では `-tenant-public-id`（ランダムな 16 文字 hex）と `-scope` が必須である
-- `-issuer` の既定は `service-gateway`、`-audience` に既定はないので `go-service-template` を明示する
-- そのほかのフラグは `-event-public-id`、`-origin-sub`、`-subject`、`-txn`、`-kid`（既定 `test-key`）、`-ttl`（既定 2 分）である
-
-出力は `token` / `claims` / `jwks` を持つ JSON である  
-`jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる  
-サービスのテストも同じ生成ロジック（`internal-jwt-handling/jwtgen`）を使用する
+既定値の定数は `internal/infra/connect/server.go` の `DefaultInternalJWKSURL` / `DefaultInternalJWTIssuer` / `DefaultInternalJWTAudience` である  
+サービスのテストも `go tool jwtgen` と同じ生成ロジック（`internal-jwt-handling/jwtgen`）を使用する
 
 ### 認証済み主体の参照（tenantctx）
 
@@ -325,22 +248,112 @@ go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef 
 エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない  
 `connectrpc.CodeInternal` の直接使用は golangci-lint の `forbidigo` で禁止しており、許可するのは `InternalError` の中だけである
 
----
+<!-- ===== TEMPLATE: end ===== -->
+
+## 開発
+
+### セットアップ
+
+mise を使用して開発環境をセットアップする  
+`mise install` の後処理で lefthook の pre-commit フック（シークレット検出と golangci-lint）が導入される
+
+```bash
+mise trust
+mise install
+task proto
+```
+
+### テストと lint
+
+```bash
+go build ./...
+go test ./...
+golangci-lint run
+```
+
+### Docker Compose での起動
+
+Docker Compose で開発サーバーを起動できる
+
+```bash
+docker compose up --build
+```
+
+もしくは
+```bash
+task up:build
+```
+
+サーバーは `http://localhost:8080` で待ち受ける（停止は `task down`）  
+RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（「内部 JWT」を参照）
+
+### 環境変数
+
+| 環境変数 | デフォルト | 内容 |
+| --- | --- | --- |
+| `SERVER_ADDR` | `:8080` | 待ち受けるアドレス |
+| `INTERNAL_JWKS_URL` | `http://gateway:8080/.well-known/jwks.json` | 内部 JWT の検証に使う JWKS の取得先 |
+| `INTERNAL_JWT_ISSUER` | `service-gateway` | 内部 JWT に期待する `iss` |
+| `INTERNAL_JWT_AUDIENCE` | `go-service-template` | 内部 JWT に期待する `aud` |
+| `LOG_LEVEL` | `info` | ログに出力する最小レベル。`debug`／`info`／`warn`（`warning` も同義）／`error`／`critical` を取り、未知の値ならサーバーは起動しない |
+| `GOOGLE_CLOUD_PROJECT` | なし | 設定するとログの `logging.googleapis.com/trace` を `projects/<project>/traces/<trace_id>` 形式にし、Cloud Logging でトレースと相関させる。未設定なら素のトレース ID を出力する |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | なし | どちらかを設定したときだけ OTLP/HTTP で span を export する。未設定ならトレーシングは無効 |
+| `OTEL_SERVICE_NAME` | `go-service-template` | トレースの `service.name` |
+
+ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する  
+ログは標準出力へ 1 行 1 件の JSON で書き出す
+
+### トレースの確認（Jaeger）
+
+監視スタックはオーバーライドファイル `compose.o11y.yml` を重ねたときだけ有効になる  
+Jaeger が起動し、`server` に OTLP エクスポート用の環境変数（`OTEL_EXPORTER_OTLP_ENDPOINT` など）がセットされる
+
+```bash
+docker compose -f compose.yml -f compose.o11y.yml up --build
+```
+
+もしくは
+```bash
+task up:build:o11y
+```
+
+Jaeger UI は `http://localhost:16686`（停止は `task down:o11y`）
+
+### 内部 JWT
+
+ローカルでの動作確認には `internal-jwt-handling` 同梱の jwtgen CLI でトークンと JWKS を生成する  
+`go.mod` の `tool` に登録してあるので `go tool jwtgen` で実行できる
+
+```bash
+# ES256 の内部 JWT と対応する JWKS ドキュメントを JSON で出力
+go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef -scope <scope> -ttl 10m
+```
+
+- `-token-use` は `tenant_access`（既定）、`event_access`、`registration`、`service` を取る
+- `tenant_access` では `-tenant-public-id`（ランダムな 16 文字 hex）と `-scope` が必須である。必要な scope は proto の `required_scopes` で宣言されている
+- `-issuer` の既定は `service-gateway`、`-audience` に既定はないので `go-service-template` を明示する
+- そのほかのフラグは `-event-public-id`、`-origin-sub`、`-subject`、`-txn`、`-kid`（既定 `test-key`）、`-ttl`（既定 2 分）である
+
+出力は `token` / `claims` / `jwks` を持つ JSON である  
+`jwks` を任意の HTTP エンドポイント（例: ローカルのファイルサーバ）で配信し、`INTERNAL_JWKS_URL` にその URL を設定すると、`Authorization: Bearer <token>` で呼び出せる
+
+### connect-es の生成
+
+connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
+ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
 
 ## proto アーティファクトの利用
 
 `.proto` は [ORAS](https://oras.land) で OCI アーティファクト化され、GitHub Container Registry に公開される  
-アーティファクト名: `ghcr.io/<owner>/<repo>/proto`
+アーティファクト名: `ghcr.io/<owner>/<repo>-proto`
 
 ### 取得（pull）
 
-[ORAS CLI](https://oras.land/docs/installation) が必要
+[ORAS CLI](https://oras.land/docs/installation) が必要（mise でも導入される）
 
 ```bash
 # 出力先ディレクトリに proto を展開（ディレクトリ構造が復元される）
-oras pull ghcr.io/pj-hoakari/go-service-template-proto:latest -o proto
-
-# 例: proto/greet/v1/greet.proto として展開される
+oras pull ghcr.io/<owner>/<repo>-proto:latest -o proto
 ```
 
 取得した `.proto` は `buf` や `protoc` の入力としてそのまま利用できる
