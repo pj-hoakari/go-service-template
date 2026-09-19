@@ -46,10 +46,10 @@ bootstrap は次を行う
 - `WITH_OPTION=db` のとき `origin/with-db` を `--no-commit` でマージする
 - origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は除外し、再生成で追従させる）
 - `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分などが追従する）
-- `go mod tidy`、`clients/connect-es` の `npm install`、`task proto` で生成物とロックファイルを同期する
+- `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
 - `sync-with-*.yml` とローカルの `with-*` ブランチを削除する
-- 完了時に Taskfile.yml から bootstrap タスク自身を削除する
+- 完了時に Taskfile.yml から bootstrap タスク自身と、置換に使う `scripts/rewrite` を削除する
 
 変更はコミットされないので、内容を確認して自分でコミットする  
 途中で失敗した場合はタスクが残るので、原因を直して再実行できる
@@ -78,11 +78,15 @@ OLD=github.com/pj-hoakari/go-service-template
 NEW=github.com/<owner>/<repo>
 
 # gen/ は再生成で追従
-git grep -lz "$OLD" -- ':!gen' | xargs -0 sed -i "s#$OLD#$NEW#g"
+git grep -lzF "$OLD" -- ':!gen' | go run ./scripts/rewrite "$OLD" "$NEW"
 
-go mod tidy
 task proto:gen:go
+go mod tidy
 ```
+
+`scripts/rewrite` は、`git grep -lz` が出力したファイル一覧を標準入力から受け取り、文字列をそのまま（正規表現としてではなく）置換する  
+GNU sed と BSD sed（macOS）で `sed -i` の挙動が異なるため、置換には sed ではなくこのスクリプトを使う  
+`go mod tidy` は `gen/` を再生成した後に実行する（先に実行すると、`gen/` に残った古い import のせいでテンプレート自身が依存に追加される）
 
 ### 2. connect-es クライアント（npm パッケージ）
 
@@ -121,8 +125,8 @@ mv renovate.example.json renovate.json
 `task bootstrap` を使った場合、`bootstrap: `と記した項目は済んでいる
 
 - [ ] bootstrap: Go モジュールパスを `github.com/<owner>/<repo>` に置換（`go.mod` / `cmd/**` / `internal/**` / `buf.gen.go.yaml`）
-- [ ] bootstrap: `go mod tidy` を実行
 - [ ] bootstrap: `task proto:gen:go` で connect-go を再生成
+- [ ] bootstrap: `go mod tidy` を実行
 - [ ] bootstrap: `telemetry.DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME` を更新
 
 - [ ] bootstrap: connect-es の `package.json`（`name` / `description` / `repository.url`）を更新

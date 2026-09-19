@@ -108,15 +108,24 @@ tasks:
                 fi
             - mise install
             - echo "Rewriting {{.TEMPLATE_REPO}} -> {{.NEW_REPO}}"
-            - git grep -lzF "{{.TEMPLATE_REPO}}" -- ':!gen' | xargs -0 -r sed -i 's#{{.TEMPLATE_REPO}}#{{.NEW_REPO}}#g'
-            - git grep -lzF "{{.TEMPLATE_NAME}}" -- ':!gen' | xargs -0 -r sed -i 's#{{.TEMPLATE_NAME}}#{{.SERVICE_NAME}}#g'
-            - go mod tidy
+            - git grep -lzF "{{.TEMPLATE_REPO}}" -- ':!gen' | go run ./scripts/rewrite "{{.TEMPLATE_REPO}}" "{{.NEW_REPO}}"
+            - git grep -lzF "{{.TEMPLATE_NAME}}" -- ':!gen' | go run ./scripts/rewrite "{{.TEMPLATE_NAME}}" "{{.SERVICE_NAME}}"
             - npm install --prefix clients/connect-es
             - task: proto
+            - go mod tidy
             - git branch -d with-db 2>/dev/null || true
             - mv renovate.example.json renovate.json
             - git rm .github/workflows/sync-with-db.yml
+            - git rm -r -q scripts/rewrite
             - |
-                sed -i '/^# --- bootstrap task: begin (this block removes itself on completion) ---$/,/^# --- bootstrap task: end ---$/d' Taskfile.yml
-                sed -i -e '${/^[[:space:]]*$/d}' Taskfile.yml
+                awk '
+                    /^# --- bootstrap task: begin \(this block removes itself on completion\) ---$/ { skip = 1 }
+                    !skip {
+                        if ($0 ~ /^[[:space:]]*$/) { blank = blank $0 "\n"; next }
+                        printf "%s", blank; blank = ""; print
+                    }
+                    /^# --- bootstrap task: end ---$/ { skip = 0 }
+                ' Taskfile.yml > Taskfile.yml.tmp
+                cat Taskfile.yml.tmp > Taskfile.yml
+                rm Taskfile.yml.tmp
 # --- bootstrap task: end ---
