@@ -204,7 +204,9 @@ Compose の `migrate` サービスは `Dockerfile` の `migrate` ターゲット
 `task up` はイメージを再ビルドしないので、古いマイグレーションのままになる  
 アプリケーションは `DATABASE_URL`（必須）で接続先を設定する  
 RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（後述）  
-ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）
+ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）  
+`task migrate:*` が使う golang-migrate CLI は `.config/mise/conf.d/db.toml` で管理しており、`mise install` で `mise.toml` のツールと一緒に導入される  
+with-db 固有の開発ツールは、main との同期で競合しないよう `mise.toml` ではなくこのファイルに追加する
 
 ```bash
 # マイグレーションを適用
