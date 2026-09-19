@@ -104,19 +104,41 @@ tasks:
                         exit 1
                     fi
                     echo "Bootstrapping {{.SERVICE_NAME}} with option {{.WITH_OPTION}}"
-                    git merge --no-commit --no-ff origin/with-{{.WITH_OPTION}}
+                    # Skip the merge on a rerun: a previous run leaves it uncommitted, and git refuses to merge again.
+                    if [ "$(git rev-parse -q --verify MERGE_HEAD)" = "$(git rev-parse origin/with-{{.WITH_OPTION}})" ]; then
+                        echo "origin/with-{{.WITH_OPTION}} is already merged (not committed yet); skipping the merge"
+                    elif git merge-base --is-ancestor origin/with-{{.WITH_OPTION}} HEAD; then
+                        echo "origin/with-{{.WITH_OPTION}} is already merged; skipping the merge"
+                    else
+                        git merge --no-commit --no-ff origin/with-{{.WITH_OPTION}}
+                    fi
                 fi
             - mise install
             - echo "Rewriting {{.TEMPLATE_REPO}} -> {{.NEW_REPO}}"
-            - git grep -lzF "{{.TEMPLATE_REPO}}" -- ':!gen' | go run ./scripts/rewrite "{{.TEMPLATE_REPO}}" "{{.NEW_REPO}}"
-            - git grep -lzF "{{.TEMPLATE_NAME}}" -- ':!gen' | go run ./scripts/rewrite "{{.TEMPLATE_NAME}}" "{{.SERVICE_NAME}}"
+            # Taskfile.yml is left out so that bootstrap-check keeps the template name to look for.
+            - git grep -lzF "{{.TEMPLATE_REPO}}" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "{{.TEMPLATE_REPO}}" "{{.NEW_REPO}}"
+            - git grep -lzF "{{.TEMPLATE_NAME}}" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "{{.TEMPLATE_NAME}}" "{{.SERVICE_NAME}}"
             - npm install --prefix clients/connect-es
             - task: proto
             - go mod tidy
-            - git branch -d with-db 2>/dev/null || true
-            - mv renovate.example.json renovate.json
-            - git rm .github/workflows/sync-with-db.yml
-            - git rm -r -q scripts/rewrite
+            # Skip when already moved, so that bootstrap can be rerun after a failure.
+            - if [ -f renovate.example.json ]; then mv renovate.example.json renovate.json; fi
+            # with-* branches only exist in the template, so drop them from the branches filters
+            # (e.g. [main, with-db] -> [main]) along with the workflows that manage them.
+            - |
+                for f in $(git grep -lE '^[[:space:]]*branches:.*with-' -- .github/workflows); do
+                    awk '/^[[:space:]]*branches:/ {
+                        gsub(/,[[:space:]]*with-[[:alnum:]_.-]+/, "")
+                        gsub(/with-[[:alnum:]_.-]+,[[:space:]]*/, "")
+                    } { print }' "$f" > "$f.tmp"
+                    cat "$f.tmp" > "$f"
+                    rm "$f.tmp"
+                done
+            - git rm -q --ignore-unmatch -- '.github/workflows/sync-with-*.yml' .github/workflows/guard-main.yml
+            # Local with-* branches are copies of the template branches, which stay on origin.
+            - git for-each-ref --format='%(refname:short)' 'refs/heads/with-*' | while read -r b; do git branch -D "$b"; done
+            - task: bootstrap-check
+            - git rm -r -q --ignore-unmatch scripts/rewrite
             - |
                 awk '
                     /^# --- bootstrap task: begin \(this block removes itself on completion\) ---$/ { skip = 1 }
@@ -128,4 +150,24 @@ tasks:
                 ' Taskfile.yml > Taskfile.yml.tmp
                 cat Taskfile.yml.tmp > Taskfile.yml
                 rm Taskfile.yml.tmp
+
+    bootstrap-check:
+        desc: Check that no template leftovers remain and that build, test and lint pass.
+        vars:
+            TEMPLATE_NAME: "go-service-template"
+        cmds:
+            # Taskfile.yml is skipped, since the bootstrap tasks in it hold the template name.
+            - |
+                if git grep -nIF --untracked "{{.TEMPLATE_NAME}}" -- ':!Taskfile.yml'; then
+                    echo "The template name still remains in the lines above." >&2
+                    exit 1
+                fi
+            - |
+                if git grep -nIE --untracked 'with-[[:alnum:]]' -- .github/workflows; then
+                    echo "The template branches (with-*) are still referenced in the workflows above." >&2
+                    exit 1
+                fi
+            - go build ./...
+            - go test ./...
+            - golangci-lint run
 # --- bootstrap task: end ---

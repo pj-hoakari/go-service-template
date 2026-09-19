@@ -44,12 +44,14 @@ task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=db
 bootstrap は次を行う
 
 - `WITH_OPTION=db` のとき `origin/with-db` を `--no-commit` でマージする
-- origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は除外し、再生成で追従させる）
+- origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は再生成で追従させ、Taskfile.yml の bootstrap 関連タスクは最後に削除するので、どちらも除外する）
 - `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分などが追従する）
 - `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
-- `sync-with-*.yml` とローカルの `with-*` ブランチを削除する
-- 完了時に Taskfile.yml から bootstrap タスク自身と、置換に使う `scripts/rewrite` を削除する
+- workflow の `branches` フィルタから `with-*` を除く（例: `[main, with-db]` → `[main]`）
+- テンプレート専用の workflow（`sync-with-*.yml` と `guard-main.yml`）とローカルの `with-*` ブランチを削除する
+- `task bootstrap-check` でテンプレートの残りがないことと、build・test・lint が通ることを確認する
+- 完了時に Taskfile.yml から bootstrap / bootstrap-check タスクと、置換に使う `scripts/rewrite` を削除する
 
 変更はコミットされないので、内容を確認して自分でコミットする  
 途中で失敗した場合はタスクが残るので、原因を直して再実行できる
@@ -78,7 +80,7 @@ OLD=github.com/pj-hoakari/go-service-template
 NEW=github.com/<owner>/<repo>
 
 # gen/ は再生成で追従
-git grep -lzF "$OLD" -- ':!gen' | go run ./scripts/rewrite "$OLD" "$NEW"
+git grep -lzF "$OLD" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "$OLD" "$NEW"
 
 task proto:gen:go
 go mod tidy
@@ -116,7 +118,30 @@ mv renovate.example.json renovate.json
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
-- with-db ブランチと同期用 workflow（`.github/workflows/sync-with-db.yml`）を削除する
+- `.github/workflows/test.yml`・`golangci-lint.yml`・`go-generate-check.yml` の `branches` フィルタから `with-*` を除く（`[main, with-db]` → `[main]`）
+- with-* ブランチと、テンプレート専用の workflow（`.github/workflows/sync-with-*.yml` と `guard-main.yml`）を削除する
+
+### 5. 確認
+
+テンプレートの残りがないことと、build・test・lint が通ることを確認する
+
+```bash
+task bootstrap-check
+```
+
+次のどれかに当てはまると失敗する
+
+- テンプレート名（`go-service-template`）が、追跡中または未追跡のファイル（`.gitignore` の対象と Taskfile.yml を除く）に残っている
+- `.github/workflows` に `with-*` ブランチへの参照が残っている
+- `go build ./...`、`go test ./...`、`golangci-lint run` のどれかが失敗する
+
+テンプレート名が残っている場合は、`scripts/rewrite` でまとめて置換できる
+
+```bash
+git grep -lzF go-service-template -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite go-service-template <service-name>
+```
+
+確認が済んだら、Taskfile.yml の `# --- bootstrap task: begin` から `# --- bootstrap task: end ---` までと `scripts/rewrite` を削除する
 
 ---
 
@@ -133,7 +158,9 @@ mv renovate.example.json renovate.json
 - [ ] bootstrap: `clients/connect-es` で `npm install` を実行し `package-lock.json` を同期
 
 - [ ] bootstrap: `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
-- [ ] bootstrap: `sync-with-*.yml` とローカルの with-* ブランチを削除
+- [ ] bootstrap: workflow の `branches` フィルタから `with-*` を除く
+- [ ] bootstrap: `sync-with-*.yml`・`guard-main.yml` とローカルの with-* ブランチを削除
+- [ ] bootstrap: `task bootstrap-check` が通る
 
 下記は手動対応/確認が必要
 - [ ] `clients/connect-es/package.json` の `name` のスコープを `@<owner>` に変更
