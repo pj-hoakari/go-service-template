@@ -49,6 +49,7 @@ func Open(ctx context.Context, databaseURL string) (*sqlx.DB, error) {
 			OmitConnectorConnect: true,
 			RecordError:          nil,
 			SpanFilter:           nil,
+			RowsChildOfQuery:     true,
 		}),
 	)
 	if err != nil {
