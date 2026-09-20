@@ -2,37 +2,40 @@ name: Check Go Generated Code
 
 on:
     pull_request:
-        paths:
-            - "**/*.go"
-            - "go.mod"
-            - "go.sum"
-            - ".github/workflows/go-generate-check.yml"
     push:
         branches: [main, with-db]
-        paths:
-            - "**/*.go"
-            - "go.mod"
-            - "go.sum"
-            - ".github/workflows/go-generate-check.yml"
-    workflow_call:
-        inputs:
-            ref:
-                description: Checkout target (default is the triggering commit)
-                type: string
-                required: false
-                default: ""
 
 permissions:
     contents: read
 
 jobs:
-    drift-check:
+    changes:
         runs-on: ubuntu-latest
+        outputs:
+            changed: ${{ steps.detect.outputs.changed }}
         steps:
             - name: Checkout
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
-                  ref: ${{ inputs.ref }}
+                  fetch-depth: 0
+
+            - name: Detect changes
+              id: detect
+              uses: ./.github/actions/detect-changes
+              with:
+                  paths: |
+                      **/*.go
+                      go.mod
+                      go.sum
+                      .github/workflows/go-generate-check.yml
+
+    go-generate-check:
+        needs: changes
+        if: ${{ !cancelled() && needs.changes.outputs.changed != 'false' }}
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
             - name: Set up Go
               uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
