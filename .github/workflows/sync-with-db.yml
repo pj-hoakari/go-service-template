@@ -14,7 +14,9 @@ jobs:
     sync:
         if: github.repository == 'pj-hoakari/go-service-template'
         runs-on: ubuntu-latest
-        environment: sync
+        environment:
+            name: sync
+            deployment: false
         env:
             GH_REPO: ${{ github.repository }}
             BASE_BRANCH: with-db
