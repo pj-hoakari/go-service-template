@@ -16,6 +16,7 @@
 			"matchPackageNames": [
 				"github.com/jackc/pgx{/,}**",
 				"github.com/jmoiron/sqlx{/,}**",
+				"github.com/XSAM/otelsql{/,}**",
 				"github.com/testcontainers/testcontainers-go{/,}**",
 				"postgres",
 				"migrate/migrate",
