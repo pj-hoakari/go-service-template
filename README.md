@@ -48,7 +48,6 @@ bootstrap は次を行う
 - `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分、README のタイトルなどが追従する）
 - `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
-- workflow の `branches` フィルタから `with-*` を除く（例: `[main, with-db]` → `[main]`）
 - テンプレート専用の workflow（`sync-with-*.yml` と `guard-main.yml`）とローカルの `with-*` ブランチを削除する
 - `task bootstrap-check` でテンプレートの残りがないことと、build・test・lint が通ることを確認する
 - 完了時に Taskfile.yml から bootstrap / bootstrap-check タスクと、置換に使う `scripts/rewrite` を削除する
@@ -118,7 +117,6 @@ mv renovate.example.json renovate.json
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
-- `.github/workflows/test.yml`・`golangci-lint.yml`・`go-generate-check.yml` の `branches` フィルタから `with-*` を除く（`[main, with-db]` → `[main]`）
 - with-* ブランチと、テンプレート専用の workflow（`.github/workflows/sync-with-*.yml` と `guard-main.yml`）を削除する
 
 ### 5. 確認
@@ -156,7 +154,6 @@ git grep -lzF go-service-template -- ':!gen' ':!Taskfile.yml' | go run ./scripts
 - [ ] bootstrap: `clients/connect-es` で `npm install` を実行し `package-lock.json` を同期
 
 - [ ] bootstrap: `renovate.json` を `renovate.example.json` の内容で置き換え（example は削除）
-- [ ] bootstrap: workflow の `branches` フィルタから `with-*` を除く
 - [ ] bootstrap: `sync-with-*.yml`・`guard-main.yml` とローカルの with-* ブランチを削除
 - [ ] bootstrap: `task bootstrap-check` が通る
 
