@@ -77,6 +77,32 @@ func newTestHandler(t *testing.T, keys internaljwt.JWKS, greetService applicatio
 	return handler
 }
 
+func newTestHandlerForJWKSURL(t *testing.T, jwksURL string, greetService application.GreetUseCases) http.Handler {
+	t.Helper()
+
+	cache, err := jwks.New(jwks.Config{
+		URL:             jwksURL,
+		RefreshCooldown: time.Nanosecond,
+		FailureCooldown: time.Nanosecond,
+		RetryBackoff:    []time.Duration{},
+	})
+	if err != nil {
+		t.Fatalf("create JWKS cache: %v", err)
+	}
+
+	tokenVerifier, err := verifier.New(DefaultInternalJWTIssuer, DefaultInternalJWTAudience, cache)
+	if err != nil {
+		t.Fatalf("create internal JWT verifier: %v", err)
+	}
+
+	handler, err := NewHandlerWithVerifier(greetService, tokenVerifier)
+	if err != nil {
+		t.Fatalf("NewHandlerWithVerifier() error = %v", err)
+	}
+
+	return handler
+}
+
 // mintInternalJWT issues an internal JWT for the issuer and audience this
 // service verifies against.
 func mintInternalJWT(t *testing.T, tokenUse, scope, tenantPublicID string) (string, internaljwt.JWKS) {
@@ -220,6 +246,28 @@ func TestGreetServiceAuthzRejectsUnknownSigningKey(t *testing.T) {
 
 	_, err := client.Greet(context.Background(), req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnauthenticated; got != want {
+		t.Fatalf("Greet() error code = %v, want %v", got, want)
+	}
+}
+
+func TestGreetServiceAuthzUnavailableWhenJWKSUnreachable(t *testing.T) {
+	t.Parallel()
+
+	jwksServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(jwksServer.Close)
+
+	authorization, _ := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.read", "a1b2c3d4e5f60718")
+	httpServer := httptest.NewServer(newTestHandlerForJWKSURL(t, jwksServer.URL, application.NewGreetService()))
+	t.Cleanup(httpServer.Close)
+	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+
+	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
+	req.Header().Set("Authorization", authorization)
+
+	_, err := client.Greet(context.Background(), req)
+	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnavailable; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
 }

@@ -220,6 +220,7 @@ proto の policy annotation から `protoc-gen-authz-go` が生成するのは p
 - `service` トークンは scope の検査を行わない
 - proto の annotation（`authz.v1.service_auth_policy` / `authz.v1.auth_policy` の `level`・`required_scopes`・`token_uses`）は宣言のみで、強制は interceptor が行う
 - 未認証と `token_use` の不一致は `CodeUnauthenticated`、scope 不足は `CodePermissionDenied` を返す。拒否理由はクライアントには返さず、`internal JWT rejected` として `slog.Warn` でサーバー側にのみ記録する
+- JWKS を取得できないなど検証鍵そのものを解決できなかった場合は、トークン側の不備と区別して `CodeUnavailable` を返す
 - `Greet` は `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する。`token_uses` は宣言しておらず、既定の `tenant_access` に従う
 
 ハンドラは `NewHandlerWithJWTSettings(greetService, settings)` → `NewHandlerWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成される（`greetService` は `application.GreetUseCases`）  
