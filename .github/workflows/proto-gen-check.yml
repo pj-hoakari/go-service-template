@@ -2,32 +2,40 @@ name: Check Generated Code
 
 on:
     pull_request:
-        paths:
-            - "proto/**"
-            - "gen/**"
-            - "buf.yaml"
-            - "buf.gen.go.yaml"
-            - "go.mod"
-            - "go.sum"
-            - "Taskfile.yml"
-            - ".github/workflows/proto-gen-check.yml"
     push:
         branches: [main]
-        paths:
-            - "proto/**"
-            - "gen/**"
-            - "buf.yaml"
-            - "buf.gen.go.yaml"
-            - "go.mod"
-            - "go.sum"
-            - "Taskfile.yml"
-            - ".github/workflows/proto-gen-check.yml"
 
 permissions:
     contents: read
 
 jobs:
-    drift-check:
+    changes:
+        runs-on: ubuntu-latest
+        outputs:
+            changed: ${{ steps.detect.outputs.changed }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  fetch-depth: 0
+
+            - name: Detect changes
+              id: detect
+              uses: ./.github/actions/detect-changes
+              with:
+                  paths: |
+                      proto/**
+                      gen/**
+                      buf.yaml
+                      buf.gen.go.yaml
+                      go.mod
+                      go.sum
+                      Taskfile.yml
+                      .github/workflows/proto-gen-check.yml
+
+    proto-gen-check:
+        needs: changes
+        if: ${{ !cancelled() && needs.changes.outputs.changed != 'false' }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
