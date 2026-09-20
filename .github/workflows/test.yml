@@ -11,30 +11,27 @@ permissions:
 jobs:
     changes:
         runs-on: ubuntu-latest
-        if: github.event_name == 'pull_request'
         outputs:
-            run: ${{ steps.changes.outputs.run }}
+            changed: ${{ steps.detect.outputs.changed }}
         steps:
             - name: Checkout
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   fetch-depth: 0
 
-            - name: Detect test-related changes
-              id: changes
-              env:
-                  BASE_SHA: ${{ github.event.pull_request.base.sha }}
-                  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-              run: |
-                  if git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- '**/*.go' go.mod go.sum .github/workflows/test.yml; then
-                    echo "run=false" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "run=true" >> "$GITHUB_OUTPUT"
-                  fi
+            - name: Detect changes
+              id: detect
+              uses: ./.github/actions/detect-changes
+              with:
+                  paths: |
+                      **/*.go
+                      go.mod
+                      go.sum
+                      .github/workflows/test.yml
 
     test:
         needs: changes
-        if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.run == 'true') }}
+        if: ${{ !cancelled() && needs.changes.outputs.changed != 'false' }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout

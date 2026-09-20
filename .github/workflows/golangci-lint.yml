@@ -2,28 +2,38 @@ name: autofix.ci
 
 on:
     pull_request:
-        paths:
-            - "**/*.go"
-            - ".golangci.yml"
-            - "go.mod"
-            - "go.sum"
-            - "mise.toml"
-            - ".github/workflows/golangci-lint.yml"
     push:
         branches: [main, with-db]
-        paths:
-            - "**/*.go"
-            - ".golangci.yml"
-            - "go.mod"
-            - "go.sum"
-            - "mise.toml"
-            - ".github/workflows/golangci-lint.yml"
 
 permissions:
     contents: read
 
 jobs:
+    changes:
+        runs-on: ubuntu-latest
+        outputs:
+            changed: ${{ steps.detect.outputs.changed }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  fetch-depth: 0
+
+            - name: Detect changes
+              id: detect
+              uses: ./.github/actions/detect-changes
+              with:
+                  paths: |
+                      **/*.go
+                      .golangci.yml
+                      go.mod
+                      go.sum
+                      mise.toml
+                      .github/workflows/golangci-lint.yml
+
     golangci-lint:
+        needs: changes
+        if: ${{ !cancelled() && needs.changes.outputs.changed != 'false' }}
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
