@@ -4,157 +4,124 @@ on:
     push:
         branches: [main]
 
-permissions:
-    contents: write
-    issues: write
-    statuses: write
+permissions: {}
 
 concurrency:
     group: sync-with-db
     cancel-in-progress: false
 
 jobs:
-    prepare:
+    sync:
+        if: github.repository == 'pj-hoakari/go-service-template'
         runs-on: ubuntu-latest
-        outputs:
-            exists: ${{ steps.branch.outputs.exists }}
+        environment: sync
+        env:
+            GH_REPO: ${{ github.repository }}
+            BASE_BRANCH: with-db
+            SYNC_BRANCH: sync/main-to-with-db
+            ASSIGNEE: KasumiMercury
         steps:
-            - name: Checkout
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - name: Create GitHub App token
+              id: app-token
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
               with:
-                  fetch-depth: 0
+                  client-id: ${{ vars.SYNC_APP_CLIENT_ID }}
+                  private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+                  permission-contents: write
+                  permission-pull-requests: write
+                  permission-workflows: write
 
-            - name: Check with-db branch exists
-              id: branch
+            - name: Inspect sync state
+              id: state
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
               run: |
-                  if git ls-remote --exit-code --heads origin with-db > /dev/null; then
-                    echo "exists=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "exists=false" >> "$GITHUB_OUTPUT"
-                    echo "::notice::with-db ブランチが存在しないため同期をスキップしました"
+                  ahead=$(gh api "repos/$GH_REPO/compare/$BASE_BRANCH...main" --jq .ahead_by)
+                  pr=$(gh pr list --base "$BASE_BRANCH" --head "$SYNC_BRANCH" --state open --json number --jq '.[0].number // empty')
+                  echo "ahead=$ahead" >> "$GITHUB_OUTPUT"
+                  echo "pr=$pr" >> "$GITHUB_OUTPUT"
+                  if [ "$ahead" = "0" ]; then
+                    echo "::notice::$BASE_BRANCH は main を取り込み済みのため同期をスキップしました"
                   fi
 
-            - name: Merge main into with-db
-              if: steps.branch.outputs.exists == 'true'
-              run: |
-                  git config user.name "github-actions[bot]"
-                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-                  git switch with-db
-                  git merge --no-ff --no-edit origin/main
-
-            - name: Push candidate branch
-              if: steps.branch.outputs.exists == 'true'
-              run: git push --force origin HEAD:refs/heads/with-db-candidate
-
-    test:
-        needs: prepare
-        if: needs.prepare.outputs.exists == 'true'
-        uses: ./.github/workflows/test.yml
-        with:
-            ref: with-db-candidate
-
-    lint:
-        needs: prepare
-        if: needs.prepare.outputs.exists == 'true'
-        uses: ./.github/workflows/golangci-lint.yml
-        with:
-            ref: with-db-candidate
-
-    generate-check:
-        needs: prepare
-        if: needs.prepare.outputs.exists == 'true'
-        uses: ./.github/workflows/go-generate-check.yml
-        with:
-            ref: with-db-candidate
-
-    promote:
-        needs: [prepare, test, lint, generate-check]
-        if: needs.prepare.outputs.exists == 'true'
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              with:
-                  ref: with-db-candidate
-                  fetch-depth: 0
-
-            - name: Mark candidate as verified
+            - name: Update sync branch
+              if: steps.state.outputs.ahead != '0'
               env:
-                  GH_TOKEN: ${{ github.token }}
-                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  PR: ${{ steps.state.outputs.pr }}
               run: |
-                  sha=$(git rev-parse HEAD)
-                  for context in test actionlint; do
-                    gh api "repos/${{ github.repository }}/statuses/${sha}" \
-                      -f state=success \
-                      -f context="$context" \
-                      -f description="verified by sync-with-db" \
-                      -f target_url="$RUN_URL"
-                  done
+                  main_sha=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
 
-            - name: Promote candidate to with-db
-              # 検証中に with-db へ別の push があった場合は non-ff で失敗し、次回同期に委ねる。
-              run: |
-                  git push origin HEAD:refs/heads/with-db
-                  git push origin --delete with-db-candidate
+                  if ! gh api "repos/$GH_REPO/git/ref/heads/$SYNC_BRANCH" --silent 2>/dev/null; then
+                    gh api -X POST "repos/$GH_REPO/git/refs" -f ref="refs/heads/$SYNC_BRANCH" -f sha="$main_sha" --silent
+                    exit 0
+                  fi
 
-            - name: Close resolved sync-failure issues
+                  if [ -z "$PR" ]; then
+                    gh api -X PATCH "repos/$GH_REPO/git/refs/heads/$SYNC_BRANCH" -f sha="$main_sha" -F force=true --silent
+                    exit 0
+                  fi
+
+                  if gh api -X PATCH "repos/$GH_REPO/git/refs/heads/$SYNC_BRANCH" -f sha="$main_sha" -F force=false --silent 2>/dev/null; then
+                    exit 0
+                  fi
+
+                  if ! out=$(gh api -X POST "repos/$GH_REPO/merges" -f base="$SYNC_BRANCH" -f head=main 2>&1); then
+                    echo "$out"
+                    if echo "$out" | grep -q "HTTP 409"; then
+                      gh pr comment "$PR" --body "main の新しい変更（${main_sha}）が \`$SYNC_BRANCH\` と競合したため取り込めませんでした。ローカルで \`origin/main\` を \`$SYNC_BRANCH\` にマージして解消してください。"
+                    fi
+                    exit 1
+                  fi
+
+            - name: Open pull request
+              id: open
+              if: steps.state.outputs.ahead != '0' && steps.state.outputs.pr == ''
               env:
-                  GH_TOKEN: ${{ github.token }}
-                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
               run: |
-                  for number in $(gh issue list --label sync-failure --state open --json number --jq '.[].number'); do
-                    gh issue close "$number" --comment "同期成功、クローズします: $RUN_URL"
-                  done
-
-    notify-failure:
-        needs: [prepare, test, lint, generate-check, promote]
-        if: ${{ !cancelled() && needs.prepare.outputs.exists == 'true' && contains(needs.*.result, 'failure') }}
-        runs-on: ubuntu-latest
-        steps:
-            - name: Report sync failure
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  GH_REPO: ${{ github.repository }}
-                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-                  ASSIGNEE: KasumiMercury
-              run: |
-                  stage="不明"
-                  if [ "${{ needs.prepare.result }}" = "failure" ]; then stage="マージ競合"; fi
-                  if [ "${{ needs.test.result }}" = "failure" ]; then stage="テスト失敗"; fi
-                  if [ "${{ needs.lint.result }}" = "failure" ]; then stage="lint 失敗"; fi
-                  if [ "${{ needs.generate-check.result }}" = "failure" ]; then stage="go generate ドリフト"; fi
-
-                  gh label create sync-failure --description "with-db 同期の失敗" --color d93f0b --force
-
                   body=$(cat <<EOF
-                  ## with-db 同期失敗: ${stage}
+                  main の変更を $BASE_BRANCH に取り込む同期 PR
 
-                  main → with-db の同期が失敗しました。
+                  必須チェックが通ると auto-merge によりマージコミットでマージされる
+                  squash / rebase ではマージしないこと（main との祖先関係が失われ、以降の同期で毎回競合する）
 
-                  - 失敗ステージ: **${stage}**
-                  - Workflow run: ${RUN_URL}
-                  - main のコミット: ${{ github.sha }}
+                  ### 競合した場合
 
-                  ### 解決手順
+                  単純な競合は「Resolve conflicts」から Web 上で解消できる
+                  Web 上で解消できない場合はローカルで解消する
 
                   \`\`\`bash
                   git fetch origin
-                  git switch with-db
-                  git reset --hard origin/with-db
-                  git merge origin/main
-                  # 競合した場合: 解消して git add → git commit
+                  git switch $SYNC_BRANCH
+                  git merge origin/$BASE_BRANCH
                   # go.mod / go.sum の競合は「main の更新 + DB 依存の追加」の形に編集し go mod tidy で go.sum を再生成
                   go test ./...
-                  git push origin with-db
+                  git push origin $SYNC_BRANCH
                   \`\`\`
 
+                  解消後に auto-merge が無効になっている場合は、有効化するか「Create a merge commit」で手動マージする
                   EOF
                   )
 
-                  existing=$(gh issue list --label sync-failure --state open --json number --jq '.[0].number')
-                  if [ -n "$existing" ]; then
-                    gh issue comment "$existing" --body "$body"
-                  else
-                    gh issue create --title "with-db 同期失敗" --label sync-failure --assignee "$ASSIGNEE" --body "$body"
+                  pr=$(gh api -X POST "repos/$GH_REPO/pulls" \
+                    -f title="chore: sync main into $BASE_BRANCH" \
+                    -f head="$SYNC_BRANCH" \
+                    -f base="$BASE_BRANCH" \
+                    -f body="$body" \
+                    --jq .number)
+                  gh api -X POST "repos/$GH_REPO/issues/$pr/assignees" -f "assignees[]=$ASSIGNEE" --silent
+                  echo "pr=$pr" >> "$GITHUB_OUTPUT"
+
+            - name: Enable auto-merge
+              if: steps.state.outputs.ahead != '0'
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  PR: ${{ steps.open.outputs.pr || steps.state.outputs.pr }}
+              run: |
+                  if [ "$(gh pr view "$PR" --json autoMergeRequest --jq '.autoMergeRequest == null')" != "true" ]; then
+                    exit 0
+                  fi
+                  if ! gh pr merge "$PR" --auto --merge; then
+                    echo "::warning::auto-merge を有効化できませんでした。PR #$PR を確認してください"
                   fi
