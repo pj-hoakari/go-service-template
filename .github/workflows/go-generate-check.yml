@@ -3,7 +3,7 @@ name: Check Go Generated Code
 on:
     pull_request:
     push:
-        branches: [main, with-db]
+        branches: [main]
 
 permissions:
     contents: read
