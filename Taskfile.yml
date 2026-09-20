@@ -176,17 +176,7 @@ tasks:
             - go mod tidy
             # Skip when already moved, so that bootstrap can be rerun after a failure.
             - if [ -f renovate.example.json ]; then mv renovate.example.json renovate.json; fi
-            # with-* branches only exist in the template, so drop them from the branches filters
-            # (e.g. [main, with-db] -> [main]) along with the workflows that manage them.
-            - |
-                for f in $(git grep -lE '^[[:space:]]*branches:.*with-' -- .github/workflows); do
-                    awk '/^[[:space:]]*branches:/ {
-                        gsub(/,[[:space:]]*with-[[:alnum:]_.-]+/, "")
-                        gsub(/with-[[:alnum:]_.-]+,[[:space:]]*/, "")
-                    } { print }' "$f" > "$f.tmp"
-                    cat "$f.tmp" > "$f"
-                    rm "$f.tmp"
-                done
+            # with-* branches only exist in the template, so drop the workflows that manage them.
             - git rm -q --ignore-unmatch -- '.github/workflows/sync-with-*.yml' .github/workflows/guard-main.yml
             # Local with-* branches are copies of the template branches, which stay on origin.
             - git for-each-ref --format='%(refname:short)' 'refs/heads/with-*' | while read -r b; do git branch -D "$b"; done
