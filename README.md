@@ -8,7 +8,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 > `with-db`ブランチは PostgreSQL による永続化を含む **DBあり版** テンプレート  
 > DB を使わないサービスは `main` ブランチを使う
 
-- HTTP サーバ（ヘルスチェック `GET /healthz`、readiness チェック `GET /readyz` + graceful shutdown）
+- HTTP サーバ（ヘルスチェック `GET /healthz`、DB への到達性を確かめる readiness チェック `GET /readyz` + graceful shutdown）
 - PostgreSQL による永続化（sqlx + pgx、`DATABASE_URL` で接続先を指定、repository インターフェース + `internal/infra/db` の実装）
 - golang-migrate によるマイグレーション（`migrations/` + `task migrate:*` タスク）と Docker Compose（postgres → migrate → server）
 - testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
@@ -210,7 +210,7 @@ with-db 固有の開発ツールは、main との同期で競合しないよう 
 readiness の結果は `/healthz` には影響しない
 
 - チェックは `cmd/server/main.go` で `httpapi.HealthRoutes(...)` に `httpapi.ReadinessCheck{Name, Check}` を渡して追加する。構築時に固定され、後から登録する仕組みは持たない
-- テンプレートの時点では readiness の対象になる外部依存がないのでチェックは 0 件で、`/readyz` は常に 200 を返す
+- `cmd/server/main.go` は `database` という名前で `db.PingContext` を登録しており、DB に到達できないあいだ `/readyz` は 503 を返す
 - チェックは登録順に直列で最後まで実行し、失敗しても残りを飛ばさない。全体のタイムアウトは 5 秒で、この期限を持つ context が各チェックに渡る
 - 失敗したチェックの名前とエラーは `readiness check failed` として `slog.Warn` でサーバー側にのみ記録し、レスポンスボディには含めない
 
