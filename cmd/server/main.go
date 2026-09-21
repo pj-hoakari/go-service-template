@@ -14,6 +14,7 @@ import (
 	"github.com/pj-hoakari/go-service-template/internal/application"
 	connectinfra "github.com/pj-hoakari/go-service-template/internal/infra/connect"
 	dbinfra "github.com/pj-hoakari/go-service-template/internal/infra/db"
+	"github.com/pj-hoakari/go-service-template/internal/infra/httpapi"
 	"github.com/pj-hoakari/go-service-template/internal/logging"
 	"github.com/pj-hoakari/go-service-template/internal/telemetry"
 )
@@ -78,10 +79,12 @@ func run() error {
 
 	greetService := application.NewGreetService(dbinfra.NewPostgresGreetingRepository(db))
 
-	handler, err := connectinfra.NewHandlerWithJWTSettings(greetService, jwtSettings)
+	greetRoutes, err := connectinfra.RoutesWithJWTSettings(greetService, jwtSettings)
 	if err != nil {
 		return fmt.Errorf("build handler: %w", err)
 	}
+
+	handler := httpapi.NewHandler(httpapi.HealthRoutes(), greetRoutes)
 
 	httpServer := &http.Server{
 		Addr:              addr,

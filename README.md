@@ -8,7 +8,7 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 > `with-db`ブランチは PostgreSQL による永続化を含む **DBあり版** テンプレート  
 > DB を使わないサービスは `main` ブランチを使う
 
-- HTTP サーバ（ヘルスチェック `GET /healthz` + graceful shutdown）
+- HTTP サーバ（ヘルスチェック `GET /healthz`、readiness チェック `GET /readyz` + graceful shutdown）
 - PostgreSQL による永続化（sqlx + pgx、`DATABASE_URL` で接続先を指定、repository インターフェース + `internal/infra/db` の実装）
 - golang-migrate によるマイグレーション（`migrations/` + `task migrate:*` タスク）と Docker Compose（postgres → migrate → server）
 - testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
@@ -191,6 +191,7 @@ internal/
   repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・認証/認可 interceptor の配線。application に依存）
+    httpapi/          HTTP ハンドラの組み立て（mux の生成・ルートの合成）とヘルスチェック
     db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード、context に結びついたトランザクション）
   logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
@@ -200,6 +201,18 @@ gen/                  buf による生成コード（手動編集しない）
 ```
 
 with-db 固有の開発ツールは、main との同期で競合しないよう `mise.toml` ではなく `.config/mise/conf.d/db.toml` に追加する
+
+### ヘルスチェックと readiness
+
+`internal/infra/httpapi` が `GET /healthz` と `GET /readyz` を登録する  
+`/healthz` はプロセスが応答できることだけを表し、常に 200 と `ok` を返す  
+`/readyz` は readiness チェックをすべて実行し、1 つでも失敗したら 503 と `not ready`、すべて成功するかチェックが 0 件なら 200 と `ok` を返す  
+readiness の結果は `/healthz` には影響しない
+
+- チェックは `cmd/server/main.go` で `httpapi.HealthRoutes(...)` に `httpapi.ReadinessCheck{Name, Check}` を渡して追加する。構築時に固定され、後から登録する仕組みは持たない
+- テンプレートの時点では readiness の対象になる外部依存がないのでチェックは 0 件で、`/readyz` は常に 200 を返す
+- チェックは登録順に直列で最後まで実行し、失敗しても残りを飛ばさない。全体のタイムアウトは 5 秒で、この期限を持つ context が各チェックに渡る
+- 失敗したチェックの名前とエラーは `readiness check failed` として `slog.Warn` でサーバー側にのみ記録し、レスポンスボディには含めない
 
 ### トレーシング
 
@@ -241,7 +254,7 @@ proto の policy annotation から `protoc-gen-authz-go` が生成するのは p
 - JWKS を取得できないなど検証鍵そのものを解決できなかった場合は、トークン側の不備と区別して `CodeUnavailable` を返す
 - `Greet` は `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する。`token_uses` は宣言しておらず、既定の `tenant_access` に従う
 
-ハンドラは `NewHandlerWithJWTSettings(greetService, settings)` → `NewHandlerWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成される（`greetService` は `application.GreetUseCases`）  
+GreetService のルート登録関数は `RoutesWithJWTSettings(greetService, settings)` → `RoutesWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成され、`cmd/server/main.go` が `httpapi.NewHandler` でヘルスチェックのルートと合成する（`greetService` は `application.GreetUseCases`）  
 前者は `JWTSettings{JWKSURL, Issuer, Audience}`（既定値は `DefaultJWTSettings()`、`cmd/server` はこれを環境変数で上書きする）の JWKS URL から `jwks.Cache` と `verifier.Verifier` を組み立てる本番向けの入口で、テストでは後者に verifier を差し替えて渡す  
 既定値の定数は `internal/infra/connect/server.go` の `DefaultInternalJWKSURL` / `DefaultInternalJWTIssuer` / `DefaultInternalJWTAudience` である  
 サービスのテストも `go tool jwtgen` と同じ生成ロジック（`internal-jwt-handling/jwtgen`）を使用する
