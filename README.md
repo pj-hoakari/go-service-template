@@ -4,12 +4,19 @@
 
 Connect (connect-go) ベースの Go マイクロサービス開発用テンプレートリポジトリ
 
+> [!NOTE]
+> `with-db`ブランチは PostgreSQL による永続化を含む **DBあり版** テンプレート  
+> DB を使わないサービスは `main` ブランチを使う
+
 - HTTP サーバ（ヘルスチェック `GET /healthz`、readiness チェック `GET /readyz` + graceful shutdown）
+- PostgreSQL による永続化（sqlx + pgx、`DATABASE_URL` で接続先を指定、repository インターフェース + `internal/infra/db` の実装）
+- golang-migrate によるマイグレーション（`migrations/` + `task migrate:*` タスク）と Docker Compose（postgres → migrate → server）
+- testcontainers による repository の統合テスト（Docker 上の PostgreSQL でマイグレーション適用済み DB を検証）
 - Service Gateway 発行の内部 JWT の検証と RPC ごとの認可（`internal-jwt-handling` による JWKS 取得 + ES256 検証。`INTERNAL_JWKS_URL` / `INTERNAL_JWT_ISSUER` / `INTERNAL_JWT_AUDIENCE` で設定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`internal-jwt-handling` 同梱の `go tool jwtgen`）とモック生成用の mockgen（`go.mod` の `tool`）
-- OpenTelemetry によるトレーシング（Connect interceptor + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
+- OpenTelemetry によるトレーシング（Connect interceptor + otelsql + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
 - `log/slog` による構造化ログ（Cloud Logging 互換の JSON。`internal/logging`。トレース有効時はトレース ID / スパン ID をレコードに付与）
-- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）
+- マルチステージ Dockerfile（distroless）とコンテナイメージ公開ワークフロー、Docker Compose（`compose.yml` + `task up:*`）、`migrate` ターゲットから golang-migrate CLI + `migrations/` を同梱した migrate イメージもサーバーイメージと並べて公開
 - `buf` による proto の lint / コード生成（connect-go・connect-es）
 - `.proto` を ORAS で OCI アーティファクト化し GitHub Container Registry へ公開するワークフロー
 - connect-es クライアントの npm publish ワークフロー
@@ -114,6 +121,7 @@ mv renovate.example.json renovate.json
 
 ### 4. その他
 
+- `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
@@ -179,15 +187,20 @@ git push origin --delete with-db
 cmd/server/           エントリポイント（依存の組み立て・DI）
 internal/
   domain/             ドメインモデル（エンティティ + 検証。他レイヤに依存しない）
-  application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain を使う）
+  application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain / repository を使う）
+  repository/         永続化の契約（`GreetingRepository` インターフェース。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・認証/認可 interceptor の配線。application に依存）
     httpapi/          HTTP ハンドラの組み立て（mux の生成・ルートの合成）とヘルスチェック
+    db/               repository の PostgreSQL 実装（sqlx + otelsql。tenantctx によるテナントガード、context に結びついたトランザクション）
   logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
   tenantctx/          検証済み内部 JWT からの主体（`sub`）とテナント公開 ID の参照・検証
+migrations/           golang-migrate 形式のマイグレーション SQL（up/down のペア）
 gen/                  buf による生成コード（手動編集しない）
 ```
+
+with-db 固有の開発ツールは、main との同期で競合しないよう `mise.toml` ではなく `.config/mise/conf.d/db.toml` に追加する
 
 ### ヘルスチェックと readiness
 
@@ -209,7 +222,15 @@ readiness の結果は `/healthz` には影響しない
 - `service.name` のデフォルトは `telemetry.DefaultServiceName`
 - Connect の RPC は `otelconnect` interceptor（`internal/infra/connect/server.go`）で span になる。Service Gateway の背後で動く前提で `WithTrustRemote()` を指定しており、受信した `traceparent` を span link に落とさず親として継続する
 - interceptor は認証の前段に入るため、認証で拒否されたリクエスト（`CodeUnauthenticated` など）も span として記録される
+- PostgreSQL へのクエリは `otelsql` でラップした pgx ドライバ（`internal/infra/db/open.go`）で span になり、空白・改行を 1 つの空白に正規化した SQL 文（`db.query.text`）を属性に持つ。RPC span の子として表示される
 - 終了時は `shutdownTimeout` 内でバッファ済み span を flush する
+
+### 永続化
+
+repository の PostgreSQL 実装（`internal/infra/db`）は `internal/tenantctx` によるテナントガード付きで、context に認証済みテナント公開 ID が無い書き込みは fail-closed で拒否する  
+`internal/infra/db` の `RunInTransaction` は context に結びついたトランザクションを開き、repository は `Executor(ctx, db)` 経由で文を実行するので、その context で呼ばれた repository の処理は同じトランザクションに参加する（入れ子の呼び出しは外側に合流する）  
+デッドロック・直列化失敗による中断は `ErrTransactionAborted` を join して返すので、トランザクションを使う RPC では `CodeAborted` で応答して再試行を促す（このテンプレートの Greet はトランザクションを使わないため、その変換は配線していない）  
+統合テスト（`internal/infra/db/postgres_test.go`）は testcontainers で PostgreSQL コンテナを起動し、`migrations/` の up SQL を適用した DB に対して検証する
 
 ### ログ
 
@@ -282,9 +303,11 @@ go test ./...
 golangci-lint run
 ```
 
+`go test ./...` は統合テストで PostgreSQL コンテナを起動するため、Docker が必要
+
 ### Docker Compose での起動
 
-Docker Compose で開発サーバーを起動できる
+Docker Compose で PostgreSQL、golang-migrate によるマイグレーション、および開発サーバーを起動できる
 
 ```bash
 docker compose up --build
@@ -295,7 +318,9 @@ docker compose up --build
 task up:build
 ```
 
-サーバーは `http://localhost:8080` で待ち受ける（停止は `task down`）  
+サーバーは `http://localhost:8080`、PostgreSQL は `localhost:5432` で待ち受ける（停止は `task down`）  
+Compose の `migrate` サービスは `Dockerfile` の `migrate` ターゲットをビルドして起動するため、`migrations/` を追加・変更したあとは `--build` 付き（`docker compose up --build` または `task up:build`）で起動し直す  
+`task up` はイメージを再ビルドしないので、古いマイグレーションのままになる  
 RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので、`go tool jwtgen` で生成した JWKS を配信する URL を `INTERNAL_JWKS_URL` で `server` に渡す（「内部 JWT」を参照）
 
 ### 環境変数
@@ -303,6 +328,7 @@ RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので
 | 環境変数 | デフォルト | 内容 |
 | --- | --- | --- |
 | `SERVER_ADDR` | `:8080` | 待ち受けるアドレス |
+| `DATABASE_URL` | なし（必須） | PostgreSQL の接続先 |
 | `INTERNAL_JWKS_URL` | `http://gateway:8080/.well-known/jwks.json` | 内部 JWT の検証に使う JWKS の取得先 |
 | `INTERNAL_JWT_ISSUER` | `service-gateway` | 内部 JWT に期待する `iss` |
 | `INTERNAL_JWT_AUDIENCE` | `go-service-template` | 内部 JWT に期待する `aud` |
@@ -313,6 +339,22 @@ RPC を呼び出すには Service Gateway 発行の内部 JWT が必要なので
 
 ヘッダ・TLS・タイムアウトなどその他の `OTEL_EXPORTER_OTLP_*` は exporter がそのまま解釈する  
 ログは標準出力へ 1 行 1 件の JSON で書き出す
+
+### マイグレーション
+
+ローカルでマイグレーションを実行する場合は、Compose で PostgreSQL を起動してから次を実行する（接続先は `DATABASE_URL` で上書きできる）  
+`task migrate:*` が使う golang-migrate CLI は `.config/mise/conf.d/db.toml` で管理しており、`mise install` で `mise.toml` のツールと一緒に導入される
+
+```bash
+# マイグレーションを適用
+task migrate:up
+# 新しいマイグレーションを作成（up/down のペアを生成）
+task migrate:create -- <migration_name>
+# 1 つ前にロールバック
+task migrate:down
+# 現在のバージョンと dirty 状態を表示
+task migrate:version
+```
 
 ### トレースの確認（Jaeger）
 
@@ -352,6 +394,42 @@ go tool jwtgen -audience go-service-template -tenant-public-id 0123456789abcdef 
 
 connect-es の生成（`task proto:gen:es`）はリリース時に CI で行う  
 ローカルで実行する場合は `clients/connect-es` の依存（`npm i`）を導入する必要がある
+
+## イメージからマイグレーションを実行する
+
+`Dockerfile` の `migrate` ターゲットは golang-migrate CLI のイメージに `migrations/` を `/migrations` として同梱したものである  
+リポジトリを clone しなくても、このイメージだけで DB マイグレーションを実行できる  
+`ENTRYPOINT` は `migrate -path /migrations` なので、利用者は接続先とコマンドだけを引数として渡す
+
+ローカルでビルドする場合は次のとおりである
+
+```bash
+docker build --target migrate -t go-service-template-migrate .
+```
+
+適用は `-database` に接続先を、続けてコマンドを渡す
+
+```bash
+docker run --rm --network host go-service-template-migrate -database "$DATABASE_URL" up
+```
+
+公開イメージは `ghcr.io/<owner>/<repo>-migrate` で、サーバーのイメージと同じバージョンタグを付ける
+
+```bash
+docker run --rm --network host ghcr.io/<owner>/<repo>-migrate:<version> -database "$DATABASE_URL" up
+```
+
+そのほかのコマンドも同じ形で渡す
+
+```bash
+# 現在のバージョンを確認
+docker run --rm --network host ghcr.io/<owner>/<repo>-migrate:<version> -database "$DATABASE_URL" version
+# 1 つ前にロールバック
+docker run --rm --network host ghcr.io/<owner>/<repo>-migrate:<version> -database "$DATABASE_URL" down 1
+```
+
+golang-migrate CLI は接続先を環境変数からは読まないため、`-database` は必ず引数で渡す  
+`--network host` はコンテナからホスト上の PostgreSQL に接続するための指定であり、接続先がホスト外にあるなら不要である
 
 ## proto アーティファクトの利用
 
