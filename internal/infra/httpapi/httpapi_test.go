@@ -43,8 +43,10 @@ func TestNewHandlerAppliesEveryRoutes(t *testing.T) {
 		},
 	)
 
-	if got, want := statusOf(t, handler, "/healthz"), http.StatusOK; got != want {
-		t.Errorf("GET /healthz status = %d, want %d", got, want)
+	for _, path := range []string{"/healthz", "/readyz"} {
+		if got, want := statusOf(t, handler, path), http.StatusOK; got != want {
+			t.Errorf("GET %s status = %d, want %d", path, got, want)
+		}
 	}
 
 	for _, path := range []string{"/first", "/second"} {
