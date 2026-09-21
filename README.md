@@ -182,6 +182,7 @@ internal/
   application/        ユースケース（`GreetUseCases` インターフェース + 実装。domain を使う）
   infra/
     connect/          Connect transport（ハンドラ・認証/認可 interceptor の配線。application に依存）
+    httpapi/          HTTP ハンドラの組み立て（mux の生成・ルートの合成）とヘルスチェック
   logging/            Cloud Logging 互換の slog ハンドラ（severity / message / time + トレース相関フィールド）
   telemetry/          OpenTelemetry トレーシングの配線（OTLP/HTTP exporter + W3C propagator）
   tenantctx/          検証済み内部 JWT からの主体（`sub`）とテナント公開 ID の参照・検証
@@ -220,7 +221,7 @@ proto の policy annotation から `protoc-gen-authz-go` が生成するのは p
 - JWKS を取得できないなど検証鍵そのものを解決できなかった場合は、トークン側の不備と区別して `CodeUnavailable` を返す
 - `Greet` は `AUTH_LEVEL_AUTHENTICATED` と `greeting.read` スコープを要求する。`token_uses` は宣言しておらず、既定の `tenant_access` に従う
 
-ハンドラは `NewHandlerWithJWTSettings(greetService, settings)` → `NewHandlerWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成される（`greetService` は `application.GreetUseCases`）  
+GreetService のルート登録関数は `RoutesWithJWTSettings(greetService, settings)` → `RoutesWithVerifier(greetService, tokenVerifier)` の段階的コンストラクタで構成され、`cmd/server/main.go` が `httpapi.NewHandler` でヘルスチェックのルートと合成する（`greetService` は `application.GreetUseCases`）  
 前者は `JWTSettings{JWKSURL, Issuer, Audience}`（既定値は `DefaultJWTSettings()`、`cmd/server` はこれを環境変数で上書きする）の JWKS URL から `jwks.Cache` と `verifier.Verifier` を組み立てる本番向けの入口で、テストでは後者に verifier を差し替えて渡す  
 既定値の定数は `internal/infra/connect/server.go` の `DefaultInternalJWKSURL` / `DefaultInternalJWTIssuer` / `DefaultInternalJWTAudience` である  
 サービスのテストも `go tool jwtgen` と同じ生成ロジック（`internal-jwt-handling/jwtgen`）を使用する
