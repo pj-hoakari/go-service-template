@@ -4,7 +4,7 @@
 
 Connect (connect-go) ベースの Go マイクロサービス開発用テンプレートリポジトリ
 
-- HTTP サーバ（ヘルスチェック `GET /healthz` + graceful shutdown）
+- HTTP サーバ（ヘルスチェック `GET /healthz`、readiness チェック `GET /readyz` + graceful shutdown）
 - Service Gateway 発行の内部 JWT の検証と RPC ごとの認可（`internal-jwt-handling` による JWKS 取得 + ES256 検証。`INTERNAL_JWKS_URL` / `INTERNAL_JWT_ISSUER` / `INTERNAL_JWT_AUDIENCE` で設定）
 - 開発・テスト用の JWT / JWKS 生成 CLI（`internal-jwt-handling` 同梱の `go tool jwtgen`）とモック生成用の mockgen（`go.mod` の `tool`）
 - OpenTelemetry によるトレーシング（Connect interceptor + OTLP/HTTP exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 設定時のみ有効）と Jaeger を含む Compose オーバーライド（`compose.o11y.yml`）
@@ -188,6 +188,18 @@ internal/
   tenantctx/          検証済み内部 JWT からの主体（`sub`）とテナント公開 ID の参照・検証
 gen/                  buf による生成コード（手動編集しない）
 ```
+
+### ヘルスチェックと readiness
+
+`internal/infra/httpapi` が `GET /healthz` と `GET /readyz` を登録する  
+`/healthz` はプロセスが応答できることだけを表し、常に 200 と `ok` を返す  
+`/readyz` は readiness チェックをすべて実行し、1 つでも失敗したら 503 と `not ready`、すべて成功するかチェックが 0 件なら 200 と `ok` を返す  
+readiness の結果は `/healthz` には影響しない
+
+- チェックは `cmd/server/main.go` で `httpapi.HealthRoutes(...)` に `httpapi.ReadinessCheck{Name, Check}` を渡して追加する。構築時に固定され、後から登録する仕組みは持たない
+- テンプレートの時点では readiness の対象になる外部依存がないのでチェックは 0 件で、`/readyz` は常に 200 を返す
+- チェックは登録順に直列で最後まで実行し、失敗しても残りを飛ばさない。全体のタイムアウトは 5 秒で、この期限を持つ context が各チェックに渡る
+- 失敗したチェックの名前とエラーは `readiness check failed` として `slog.Warn` でサーバー側にのみ記録し、レスポンスボディには含めない
 
 ### トレーシング
 
