@@ -84,7 +84,10 @@ func run() error {
 		return fmt.Errorf("build handler: %w", err)
 	}
 
-	handler := httpapi.NewHandler(httpapi.HealthRoutes(), greetRoutes)
+	handler := httpapi.NewHandler(
+		httpapi.HealthRoutes(httpapi.ReadinessCheck{Name: "database", Check: db.PingContext}),
+		greetRoutes,
+	)
 
 	httpServer := &http.Server{
 		Addr:              addr,
