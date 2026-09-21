@@ -64,17 +64,20 @@ func newTestVerifier(t *testing.T, keys internaljwt.JWKS) *verifier.Verifier {
 	return tokenVerifier
 }
 
-// newTestHandler builds the production handler wired to a verifier trusting
-// keys, serving greetService.
+// newTestHandler builds a handler serving the production service routes wired
+// to a verifier trusting keys, serving greetService.
 func newTestHandler(t *testing.T, keys internaljwt.JWKS, greetService application.GreetUseCases) http.Handler {
 	t.Helper()
 
-	handler, err := NewHandlerWithVerifier(greetService, newTestVerifier(t, keys))
+	routes, err := RoutesWithVerifier(greetService, newTestVerifier(t, keys))
 	if err != nil {
-		t.Fatalf("NewHandlerWithVerifier() error = %v", err)
+		t.Fatalf("RoutesWithVerifier() error = %v", err)
 	}
 
-	return handler
+	mux := http.NewServeMux()
+	routes(mux)
+
+	return mux
 }
 
 func newTestHandlerForJWKSURL(t *testing.T, jwksURL string, greetService application.GreetUseCases) http.Handler {
@@ -95,12 +98,15 @@ func newTestHandlerForJWKSURL(t *testing.T, jwksURL string, greetService applica
 		t.Fatalf("create internal JWT verifier: %v", err)
 	}
 
-	handler, err := NewHandlerWithVerifier(greetService, tokenVerifier)
+	routes, err := RoutesWithVerifier(greetService, tokenVerifier)
 	if err != nil {
-		t.Fatalf("NewHandlerWithVerifier() error = %v", err)
+		t.Fatalf("RoutesWithVerifier() error = %v", err)
 	}
 
-	return handler
+	mux := http.NewServeMux()
+	routes(mux)
+
+	return mux
 }
 
 // mintInternalJWT issues an internal JWT for the issuer and audience this
@@ -133,7 +139,7 @@ func mintInternalJWTFor(t *testing.T, issuer, audience, tokenUse, scope, tenantP
 	return "Bearer " + output.Token, output.JWKS
 }
 
-func TestNewHandlerWithJWTSettings(t *testing.T) {
+func TestRoutesWithJWTSettings(t *testing.T) {
 	t.Parallel()
 
 	t.Run("verifies a token against the JWKS the settings locate", func(t *testing.T) {
@@ -144,12 +150,15 @@ func TestNewHandlerWithJWTSettings(t *testing.T) {
 		settings := DefaultJWTSettings()
 		settings.JWKSURL = newTestJWKSURL(t, keys)
 
-		handler, err := NewHandlerWithJWTSettings(application.NewGreetService(), settings)
+		routes, err := RoutesWithJWTSettings(application.NewGreetService(), settings)
 		if err != nil {
-			t.Fatalf("NewHandlerWithJWTSettings() error = %v", err)
+			t.Fatalf("RoutesWithJWTSettings() error = %v", err)
 		}
 
-		httpServer := httptest.NewServer(handler)
+		mux := http.NewServeMux()
+		routes(mux)
+
+		httpServer := httptest.NewServer(mux)
 		t.Cleanup(httpServer.Close)
 		client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
 
@@ -172,9 +181,9 @@ func TestNewHandlerWithJWTSettings(t *testing.T) {
 		settings := DefaultJWTSettings()
 		settings.JWKSURL = ""
 
-		_, err := NewHandlerWithJWTSettings(application.NewGreetService(), settings)
+		_, err := RoutesWithJWTSettings(application.NewGreetService(), settings)
 		if !errors.Is(err, jwks.ErrMissingURL) {
-			t.Fatalf("NewHandlerWithJWTSettings() error = %v, want %v", err, jwks.ErrMissingURL)
+			t.Fatalf("RoutesWithJWTSettings() error = %v, want %v", err, jwks.ErrMissingURL)
 		}
 	})
 }

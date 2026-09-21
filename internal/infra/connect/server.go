@@ -45,9 +45,9 @@ func DefaultJWTSettings() JWTSettings {
 	}
 }
 
-// NewHandlerWithJWTSettings builds the process handler that verifies internal
+// RoutesWithJWTSettings builds the service routes that verify internal
 // JWTs against the JWKS the settings locate.
-func NewHandlerWithJWTSettings(greetService application.GreetUseCases, settings JWTSettings) (http.Handler, error) {
+func RoutesWithJWTSettings(greetService application.GreetUseCases, settings JWTSettings) (func(mux *http.ServeMux), error) {
 	cache, err := jwks.New(jwks.Config{
 		URL:             settings.JWKSURL,
 		HTTPClient:      nil,
@@ -67,13 +67,13 @@ func NewHandlerWithJWTSettings(greetService application.GreetUseCases, settings 
 		return nil, fmt.Errorf("create internal JWT verifier: %w", err)
 	}
 
-	return NewHandlerWithVerifier(greetService, tokenVerifier)
+	return RoutesWithVerifier(greetService, tokenVerifier)
 }
 
-// NewHandlerWithVerifier builds the process handler around a verifier of the
+// RoutesWithVerifier builds the service routes around a verifier of the
 // internal JWT. The service is guarded by an interceptor built from its
 // generated policy table, so the credential rules stay declared in the proto.
-func NewHandlerWithVerifier(greetService application.GreetUseCases, tokenVerifier interceptor.TokenVerifier) (http.Handler, error) {
+func RoutesWithVerifier(greetService application.GreetUseCases, tokenVerifier interceptor.TokenVerifier) (func(mux *http.ServeMux), error) {
 	// The caller sits behind the Service Gateway, so an incoming trace context is
 	// trusted and continued instead of being demoted to a span link.
 	tracing, err := otelconnect.NewInterceptor(otelconnect.WithTrustRemote())
@@ -90,18 +90,16 @@ func NewHandlerWithVerifier(greetService application.GreetUseCases, tokenVerifie
 		return nil, fmt.Errorf("create GreetService authentication interceptor: %w", err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", handleHealthz)
-
 	// Tracing runs before authentication, so a rejected call is still recorded
 	// on the trace it belongs to.
 	path, handler := greetv1connect.NewGreetServiceHandler(
 		NewService(greetService),
 		connectrpc.WithInterceptors(tracing, auth),
 	)
-	mux.Handle(path, handler)
 
-	return mux, nil
+	return func(mux *http.ServeMux) {
+		mux.Handle(path, handler)
+	}, nil
 }
 
 // reportAuthRejection logs why a call was refused. The client only ever learns
@@ -109,12 +107,4 @@ func NewHandlerWithVerifier(greetService application.GreetUseCases, tokenVerifie
 // request context.
 func reportAuthRejection(ctx context.Context, procedure string, err error) {
 	slog.WarnContext(ctx, "internal JWT rejected", "procedure", procedure, "error", err)
-}
-
-func handleHealthz(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-
-	if _, err := w.Write([]byte("ok")); err != nil {
-		slog.ErrorContext(r.Context(), "healthz response write failed", "error", err)
-	}
 }
