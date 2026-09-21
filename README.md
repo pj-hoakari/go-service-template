@@ -124,7 +124,7 @@ mv renovate.example.json renovate.json
 - `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
-    buf の版を変える場合は `.github/workflows/proto-gen-check.yml` の `version:` も揃える
+    proto 生成物のドリフトチェック CI は `mise.toml` の buf / task を使用するため、buf の版を workflow 側で揃える必要はない
 - with-* ブランチと、テンプレート専用の workflow（`.github/workflows/sync-with-*.yml` と `guard-main.yml`）を削除する
 
 ### 5. 確認
