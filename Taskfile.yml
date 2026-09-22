@@ -105,6 +105,7 @@ tasks:
                     fi
                     echo "Bootstrapping {{.SERVICE_NAME}} with option {{.WITH_OPTION}}"
                     git read-tree -u --reset origin/with-{{.WITH_OPTION}}
+                    rm -rf .task
                 fi
             # with-* branches only exist in the template, so drop the workflows that manage them.
             - git rm -q --ignore-unmatch -- '.github/workflows/sync-with-*.yml' .github/workflows/guard-main.yml
