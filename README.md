@@ -122,7 +122,7 @@ mv renovate.example.json renovate.json
 
 ### 4. その他
 
-- `compose.yml` / `Taskfile.yml`（`DEFAULT_DATABASE_URL`）/ `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
+- `.env.example` / `internal/infra/db/postgres_test.go` の DB 名・ユーザー名・パスワード `go_service_template`
 - `internal/telemetry/telemetry.go` の `DefaultServiceName` と `compose.o11y.yml` の `OTEL_SERVICE_NAME`（トレースの `service.name` になる）
 - `mise.toml` の Go / buf バージョン
     proto 生成物のドリフトチェック CI は `mise.toml` の buf / task を使用するため、buf の版を workflow 側で揃える必要はない
@@ -293,8 +293,11 @@ mise を使用して開発環境をセットアップする
 ```bash
 mise trust
 mise install
+cp .env.example .env
 task proto
 ```
+
+`.env` は Compose と `task migrate:*` が開発用 PostgreSQL の接続情報（`POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB`）を読む先で、git 管理外
 
 ### テストと lint
 
