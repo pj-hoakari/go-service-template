@@ -33,12 +33,12 @@ mise install
 
 DB なし
 ```bash
-task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=none
+task bootstrap WITH_OPTION=none SERVICE_NAME=<service-name>
 ```
 
 DB あり（origin/with-db の内容を取り込む）
 ```bash
-task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=db
+task bootstrap WITH_OPTION=db SERVICE_NAME=<service-name>
 ```
 
 bootstrap は次を行う
