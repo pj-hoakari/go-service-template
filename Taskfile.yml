@@ -137,6 +137,8 @@ tasks:
         vars:
             TEMPLATE_REPO: "github.com/pj-hoakari/go-service-template"
             TEMPLATE_NAME: "go-service-template"
+            TEMPLATE_NAME_SNAKE: '{{.TEMPLATE_NAME | replace "-" "_"}}'
+            SERVICE_NAME_SNAKE: '{{.SERVICE_NAME | replace "-" "_"}}'
             NEW_REPO:
                 sh: git remote get-url origin | sed -E 's#^(ssh://)?(https?://)?(git@)?##; s#:#/#; s#\.git$##'
         requires:
@@ -167,6 +169,7 @@ tasks:
             # Taskfile.yml is left out so that bootstrap-check keeps the template name to look for.
             - git grep -lzF "{{.TEMPLATE_REPO}}" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "{{.TEMPLATE_REPO}}" "{{.NEW_REPO}}"
             - git grep -lzF "{{.TEMPLATE_NAME}}" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "{{.TEMPLATE_NAME}}" "{{.SERVICE_NAME}}"
+            - git grep -lzF "{{.TEMPLATE_NAME_SNAKE}}" -- ':!gen' ':!Taskfile.yml' | go run ./scripts/rewrite "{{.TEMPLATE_NAME_SNAKE}}" "{{.SERVICE_NAME_SNAKE}}"
             - npm install --prefix clients/connect-es
             - task: proto
             - go mod tidy
@@ -192,10 +195,11 @@ tasks:
         desc: Check that no template leftovers remain and that build, test and lint pass.
         vars:
             TEMPLATE_NAME: "go-service-template"
+            TEMPLATE_NAME_SNAKE: '{{.TEMPLATE_NAME | replace "-" "_"}}'
         cmds:
             # Taskfile.yml is skipped, since the bootstrap tasks in it hold the template name.
             - |
-                if git grep -nIF --untracked "{{.TEMPLATE_NAME}}" -- ':!Taskfile.yml'; then
+                if git grep -nIF --untracked -e "{{.TEMPLATE_NAME}}" -e "{{.TEMPLATE_NAME_SNAKE}}" -- ':!Taskfile.yml'; then
                     echo "The template name still remains in the lines above." >&2
                     exit 1
                 fi
