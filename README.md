@@ -43,14 +43,14 @@ DB なし
 task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=none
 ```
 
-DB あり（origin/with-db をマージ）
+DB あり（origin/with-db の内容を取り込む）
 ```bash
 task bootstrap SERVICE_NAME=<service-name> WITH_OPTION=db
 ```
 
 bootstrap は次を行う
 
-- `WITH_OPTION=db` のとき `origin/with-db` を `--no-commit` でマージする
+- `WITH_OPTION=db` のとき `origin/with-db` のツリーを作業ツリーとインデックスに取り込む
 - origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は再生成で追従させ、Taskfile.yml の bootstrap 関連タスクは最後に削除するので、どちらも除外する）
 - `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分、README のタイトルなどが追従する）
 - `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する

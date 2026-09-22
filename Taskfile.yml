@@ -157,14 +157,7 @@ tasks:
                         exit 1
                     fi
                     echo "Bootstrapping {{.SERVICE_NAME}} with option {{.WITH_OPTION}}"
-                    # Skip the merge on a rerun: a previous run leaves it uncommitted, and git refuses to merge again.
-                    if [ "$(git rev-parse -q --verify MERGE_HEAD)" = "$(git rev-parse origin/with-{{.WITH_OPTION}})" ]; then
-                        echo "origin/with-{{.WITH_OPTION}} is already merged (not committed yet); skipping the merge"
-                    elif git merge-base --is-ancestor origin/with-{{.WITH_OPTION}} HEAD; then
-                        echo "origin/with-{{.WITH_OPTION}} is already merged; skipping the merge"
-                    else
-                        git merge --no-commit --no-ff origin/with-{{.WITH_OPTION}}
-                    fi
+                    git read-tree -u --reset origin/with-{{.WITH_OPTION}}
                 fi
             - mise install
             - echo "Rewriting {{.TEMPLATE_REPO}} -> {{.NEW_REPO}}"
