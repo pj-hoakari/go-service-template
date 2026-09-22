@@ -46,6 +46,7 @@ bootstrap は次を行う
 - `WITH_OPTION=db` のとき `origin/with-db` のツリーを作業ツリーとインデックスに取り込む
 - origin の URL から新しいモジュールパスを求め、`github.com/pj-hoakari/go-service-template` を一括置換する（`gen/` は再生成で追従させ、Taskfile.yml の bootstrap 関連タスクは最後に削除するので、どちらも除外する）
 - `go-service-template` を `SERVICE_NAME` に一括置換する（telemetry の `service.name`、内部 JWT の audience、connect-es のパッケージ名の `<repo>` 部分、README のタイトルなどが追従する）
+- `go_service_template` を `SERVICE_NAME` の `-` を `_` にしたものに一括置換する（with-db の開発用 DB 名・ユーザー名・パスワードが追従する）
 - `clients/connect-es` の `npm install`、`task proto`、`go mod tidy` の順に実行し、生成物とロックファイルを同期する
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
 - テンプレート専用の workflow（`sync-with-*.yml` と `guard-main.yml`）とローカルの `with-*` ブランチを削除する
