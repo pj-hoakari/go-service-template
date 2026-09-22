@@ -106,6 +106,8 @@ tasks:
                     echo "Bootstrapping {{.SERVICE_NAME}} with option {{.WITH_OPTION}}"
                     git read-tree -u --reset origin/with-{{.WITH_OPTION}}
                 fi
+            # with-* branches only exist in the template, so drop the workflows that manage them.
+            - git rm -q --ignore-unmatch -- '.github/workflows/sync-with-*.yml' .github/workflows/guard-main.yml
             - mise install
             - echo "Rewriting {{.TEMPLATE_REPO}} -> {{.NEW_REPO}}"
             # Taskfile.yml is left out so that bootstrap-check keeps the template name to look for.
@@ -116,8 +118,6 @@ tasks:
             - go mod tidy
             # Skip when already moved, so that bootstrap can be rerun after a failure.
             - if [ -f renovate.example.json ]; then mv renovate.example.json renovate.json; fi
-            # with-* branches only exist in the template, so drop the workflows that manage them.
-            - git rm -q --ignore-unmatch -- '.github/workflows/sync-with-*.yml' .github/workflows/guard-main.yml
             # Local with-* branches are copies of the template branches, which stay on origin.
             - git for-each-ref --format='%(refname:short)' 'refs/heads/with-*' | while read -r b; do git branch -D "$b"; done
             - task: bootstrap-check
