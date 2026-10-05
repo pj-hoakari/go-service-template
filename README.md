@@ -31,6 +31,7 @@ task create REPO=<owner>/<service-name> VISIBILITY=private
 ```
 
 `VISIBILITY` は `private`、`public`、`internal` のいずれか  
+端末から実行した場合、省略した変数は対話的に入力できる（`.taskrc.yml` の `interactive: true` による。他のタスクの必須変数も同様）  
 作成したリポジトリをクローンし、その中で次の bootstrap を実行する  
 create タスクは bootstrap の完了時に Taskfile.yml から削除される
 
