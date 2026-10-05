@@ -21,6 +21,20 @@ Connect (connect-go) ベースの Go マイクロサービス開発用テンプ�
 開発を始める前にプロジェクト向けに変更する必要がある  
 大部分は `task bootstrap` で自動化できる
 
+### リポジトリの作成（task create）
+
+テンプレートのクローンで実行し、gh でテンプレートから新しいリポジトリを作成する  
+`with-db` を使えるように、全ブランチを含めて作成する
+
+```bash
+task create REPO=<owner>/<service-name> VISIBILITY=private
+```
+
+`VISIBILITY` は `private`、`public`、`internal` のいずれか  
+端末から実行した場合、省略した変数は対話的に入力できる（`.taskrc.yml` の `interactive: true` による。他のタスクの必須変数も同様）  
+作成したリポジトリをクローンし、その中で次の bootstrap を実行する  
+create タスクは bootstrap の完了時に Taskfile.yml から削除される
+
 ### 自動セットアップ（task bootstrap）
 
 テンプレートから作成した新しいリポジトリのクローンで実行する  
@@ -51,7 +65,7 @@ bootstrap は次を行う
 - `renovate.json` を `renovate.example.json` の内容で置き換える（example は削除）
 - テンプレート専用の workflow（`sync-with-*.yml` と `guard-main.yml`）とローカルの `with-*` ブランチを削除する
 - `task bootstrap-check` でテンプレートの残りがないことと、build・test・lint が通ることを確認する
-- 完了時に Taskfile.yml から bootstrap / bootstrap-check タスクと、置換に使う `scripts/rewrite` を削除する
+- 完了時に Taskfile.yml から create / bootstrap / bootstrap-check タスクと、置換に使う `scripts/rewrite` を削除する
 
 変更はコミットされないので、内容を確認して自分でコミットする  
 途中で失敗した場合はタスクが残るので、原因を直して再実行できる
