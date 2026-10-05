@@ -178,6 +178,19 @@ tasks:
             - migrate -path migrations -database "{{.DATABASE_URL}}" force {{.CLI_ARGS}}
 
 # --- bootstrap task: begin (this block removes itself on completion) ---
+    create:
+        desc: Create a new service repository from this template with gh.
+        vars:
+            TEMPLATE_REPO: "pj-hoakari/go-service-template"
+        requires:
+            vars:
+                - name: REPO
+                - name: VISIBILITY
+                  enum: ["private", "public", "internal"]
+        cmds:
+            - gh repo create "{{.REPO}}" --template "{{.TEMPLATE_REPO}}" --include-all-branches --{{.VISIBILITY}}
+            - echo "Clone {{.REPO}} and run 'task bootstrap' in it."
+
     bootstrap:
         desc: Bootstrap a new service repository created from this template.
         vars:
