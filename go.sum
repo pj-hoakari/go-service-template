@@ -1,7 +1,7 @@
 connectrpc.com/connect v1.21.0 h1:LhqSJt7jHf5NJBo9Jq/t/9FjcYAideif0mg+qe2jCUs=
 connectrpc.com/connect v1.21.0/go.mod h1:A2ygJrukXwWy32vkCAAHNVguZrqZ+jeZ9rGRnGR4dN4=
-connectrpc.com/otelconnect v0.9.0 h1:NggB3pzRC3pukQWaYbRHJulxuXvmCKCKkQ9hbrHAWoA=
-connectrpc.com/otelconnect v0.9.0/go.mod h1:AEkVLjCPXra+ObGFCOClcJkNjS7zPaQSqvO0lCyjfZc=
+connectrpc.com/otelconnect v0.10.0 h1:K9Gt3TnhXMbZS+eif9AT3ODRALVh26+iNFUqrBFXu6A=
+connectrpc.com/otelconnect v0.10.0/go.mod h1:AvnyA6v08Yd/5k8Rt6EsBG8SOUed0WDgZfTR5jsbM30=
 dario.cat/mergo v1.0.2 h1:85+piFYR1tMbRrLcDwR18y4UKJ3aH1Tbzi24VRW1TK8=
 dario.cat/mergo v1.0.2/go.mod h1:E/hbnu0NxMFBjpMIE34DRGLWqDy0g5FuKDhCb31ngxA=
 filippo.io/edwards25519 v1.1.0 h1:FNf4tywRC1HmFuKW5xopWpigGjJKiJSV0Cqo0cJWDaA=
@@ -12,8 +12,6 @@ github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEK
 github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/XSAM/otelsql v0.43.0 h1:ZIhXqRoMhILXQwBQoq/Dl6Taap/KEFQXZrWjYV1L8X8=
-github.com/XSAM/otelsql v0.43.0/go.mod h1:DJBGBvbtwf1OCBYRTjpRFxOqi6ONpdfb+htr4ncRWuw=
 github.com/XSAM/otelsql v0.44.0 h1:KxCiv26Fh4okTPlgROE2BWk+lgi20pdgMGxuSwgbRls=
 github.com/XSAM/otelsql v0.44.0/go.mod h1:FySZIr4R4WWMqvIjf2Iah7C0LAlpKvs9XRkaX7rE608=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
