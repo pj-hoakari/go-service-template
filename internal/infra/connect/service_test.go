@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	connectrpc "connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect/v2"
 	"go.opentelemetry.io/otel/trace"
 
 	greetv1 "github.com/pj-hoakari/go-service-template/gen/greet/v1"
@@ -23,12 +23,12 @@ func TestServiceGreet(t *testing.T) {
 
 	service := NewService(application.NewGreetService())
 
-	res, err := service.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"}))
+	res, err := service.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
 	if err != nil {
 		t.Fatalf("Greet() error = %v", err)
 	}
 
-	if got, want := res.Msg.GetGreeting(), "Hello, Ada!"; got != want {
+	if got, want := res.GetGreeting(), "Hello, Ada!"; got != want {
 		t.Errorf("Greeting = %q, want %q", got, want)
 	}
 }
@@ -38,7 +38,7 @@ func TestServiceGreetRejectsMissingName(t *testing.T) {
 
 	service := NewService(application.NewGreetService())
 
-	_, err := service.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{}))
+	_, err := service.Greet(context.Background(), &greetv1.GreetRequest{})
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeInvalidArgument; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -53,7 +53,7 @@ func TestInternalErrorHidesDetail(t *testing.T) {
 
 	ctx := withSampledSpan(t, context.Background())
 
-	_, err := service.Greet(ctx, connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"}))
+	_, err := service.Greet(ctx, &greetv1.GreetRequest{Name: "Ada"})
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeInternal; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -102,7 +102,7 @@ func TestCanceledRequestIsNotLogged(t *testing.T) {
 	logs := captureLog(t)
 	service := NewService(failingGreetService{err: context.Canceled})
 
-	_, err := service.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"}))
+	_, err := service.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeCanceled; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}

@@ -7,7 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	connectrpc "connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"connectrpc.com/otelconnect"
 
 	"github.com/pj-hoakari/internal-jwt-handling/interceptor"
@@ -76,7 +77,7 @@ func RoutesWithJWTSettings(greetService application.GreetUseCases, settings JWTS
 func RoutesWithVerifier(greetService application.GreetUseCases, tokenVerifier interceptor.TokenVerifier) (func(mux *http.ServeMux), error) {
 	// The caller sits behind the Service Gateway, so an incoming trace context is
 	// trusted and continued instead of being demoted to a span link.
-	tracing, err := otelconnect.NewInterceptor(otelconnect.WithTrustRemote())
+	tracing, err := otelconnect.NewServerInterceptor(otelconnect.WithTrustRemote())
 	if err != nil {
 		return nil, fmt.Errorf("create tracing interceptor: %w", err)
 	}
@@ -92,13 +93,11 @@ func RoutesWithVerifier(greetService application.GreetUseCases, tokenVerifier in
 
 	// Tracing runs before authentication, so a rejected call is still recorded
 	// on the trace it belongs to.
-	path, handler := greetv1connect.NewGreetServiceHandler(
-		NewService(greetService),
-		connectrpc.WithInterceptors(tracing, auth),
-	)
+	server := connectrpc.NewServer(tracing, auth)
+	greetv1connect.RegisterGreetServiceHandler(server, NewService(greetService))
 
 	return func(mux *http.ServeMux) {
-		mux.Handle(path, handler)
+		connecthttp.Mount(mux, server)
 	}, nil
 }
 

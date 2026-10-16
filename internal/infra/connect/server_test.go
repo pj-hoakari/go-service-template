@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	connectrpc "connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 
 	internaljwt "github.com/pj-hoakari/internal-jwt-handling"
 	"github.com/pj-hoakari/internal-jwt-handling/jwks"
@@ -160,17 +161,18 @@ func TestRoutesWithJWTSettings(t *testing.T) {
 
 		httpServer := httptest.NewServer(mux)
 		t.Cleanup(httpServer.Close)
-		client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+		client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-		req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-		req.Header().Set("Authorization", authorization)
+		req := &greetv1.GreetRequest{Name: "Ada"}
+		ctx, info := connectrpc.NewClientContext(context.Background())
+		info.RequestHeader().Set("Authorization", authorization)
 
-		res, err := client.Greet(context.Background(), req)
+		res, err := client.Greet(ctx, req)
 		if err != nil {
 			t.Fatalf("Greet() error = %v", err)
 		}
 
-		if got, want := res.Msg.GetGreeting(), "Hello, Ada!"; got != want {
+		if got, want := res.GetGreeting(), "Hello, Ada!"; got != want {
 			t.Errorf("Greeting = %q, want %q", got, want)
 		}
 	})
@@ -194,25 +196,26 @@ func TestGreetServiceAuthz(t *testing.T) {
 	authorization, keys := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.read", "a1b2c3d4e5f60718")
 	httpServer := httptest.NewServer(newTestHandler(t, keys, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
 	t.Run("rejects missing bearer token", func(t *testing.T) {
-		_, err := client.Greet(context.Background(), connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"}))
+		_, err := client.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
 		if connectrpc.CodeOf(err) != connectrpc.CodeUnauthenticated {
 			t.Fatalf("Greet() error code = %v, want %v", connectrpc.CodeOf(err), connectrpc.CodeUnauthenticated)
 		}
 	})
 
 	t.Run("accepts internal JWT with required scope", func(t *testing.T) {
-		req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-		req.Header().Set("Authorization", authorization)
+		req := &greetv1.GreetRequest{Name: "Ada"}
+		ctx, info := connectrpc.NewClientContext(context.Background())
+		info.RequestHeader().Set("Authorization", authorization)
 
-		res, err := client.Greet(context.Background(), req)
+		res, err := client.Greet(ctx, req)
 		if err != nil {
 			t.Fatalf("Greet() error = %v", err)
 		}
 
-		if got, want := res.Msg.GetGreeting(), "Hello, Ada!"; got != want {
+		if got, want := res.GetGreeting(), "Hello, Ada!"; got != want {
 			t.Errorf("Greeting = %q, want %q", got, want)
 		}
 	})
@@ -224,12 +227,13 @@ func TestGreetServiceAuthzRejectsMissingScope(t *testing.T) {
 	authorization, keys := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.write", "a1b2c3d4e5f60718")
 	httpServer := httptest.NewServer(newTestHandler(t, keys, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", authorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", authorization)
 
-	_, err := client.Greet(context.Background(), req)
+	_, err := client.Greet(ctx, req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodePermissionDenied; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -248,12 +252,13 @@ func TestGreetServiceAuthzRejectsUnknownSigningKey(t *testing.T) {
 	foreignAuthorization, _ := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.read", "a1b2c3d4e5f60718")
 	httpServer := httptest.NewServer(newTestHandler(t, trustedKeys, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", foreignAuthorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", foreignAuthorization)
 
-	_, err := client.Greet(context.Background(), req)
+	_, err := client.Greet(ctx, req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnauthenticated; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -270,12 +275,13 @@ func TestGreetServiceAuthzUnavailableWhenJWKSUnreachable(t *testing.T) {
 	authorization, _ := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.read", "a1b2c3d4e5f60718")
 	httpServer := httptest.NewServer(newTestHandlerForJWKSURL(t, jwksServer.URL, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", authorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", authorization)
 
-	_, err := client.Greet(context.Background(), req)
+	_, err := client.Greet(ctx, req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnavailable; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -289,12 +295,13 @@ func TestGreetServiceAuthzRejectsServiceToken(t *testing.T) {
 	authorization, keys := mintInternalJWT(t, internaljwt.TokenUseService, "", "")
 	httpServer := httptest.NewServer(newTestHandler(t, keys, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", authorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", authorization)
 
-	_, err := client.Greet(context.Background(), req)
+	_, err := client.Greet(ctx, req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnauthenticated; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -315,12 +322,13 @@ func TestGreetServiceAuthzRejectsAudienceMismatch(t *testing.T) {
 	)
 	httpServer := httptest.NewServer(newTestHandler(t, keys, application.NewGreetService()))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", authorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", authorization)
 
-	_, err := client.Greet(context.Background(), req)
+	_, err := client.Greet(ctx, req)
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeUnauthenticated; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
 	}
@@ -343,17 +351,18 @@ func TestGreetServiceInjectsTenantPublicID(t *testing.T) {
 	authorization, keys := mintInternalJWT(t, internaljwt.TokenUseTenantAccess, "greeting.read", "a1b2c3d4e5f60718")
 	httpServer := httptest.NewServer(newTestHandler(t, keys, tenantEchoService{}))
 	t.Cleanup(httpServer.Close)
-	client := greetv1connect.NewGreetServiceClient(httpServer.Client(), httpServer.URL)
+	client := greetv1connect.NewGreetServiceClient(connectrpc.NewClient(connecthttp.NewTransport(httpServer.Client(), httpServer.URL)))
 
-	req := connectrpc.NewRequest(&greetv1.GreetRequest{Name: "Ada"})
-	req.Header().Set("Authorization", authorization)
+	req := &greetv1.GreetRequest{Name: "Ada"}
+	ctx, info := connectrpc.NewClientContext(context.Background())
+	info.RequestHeader().Set("Authorization", authorization)
 
-	res, err := client.Greet(context.Background(), req)
+	res, err := client.Greet(ctx, req)
 	if err != nil {
 		t.Fatalf("Greet() error = %v", err)
 	}
 
-	if got, want := res.Msg.GetGreeting(), "Hello, a1b2c3d4e5f60718!"; got != want {
+	if got, want := res.GetGreeting(), "Hello, a1b2c3d4e5f60718!"; got != want {
 		t.Errorf("tenant ID echoed by handler = %q, want %q", got, want)
 	}
 }
