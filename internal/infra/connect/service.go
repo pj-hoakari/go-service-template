@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
-	connectrpc "connectrpc.com/connect"
+	connectrpc "connectrpc.com/connect/v2"
 
 	greetv1 "github.com/pj-hoakari/go-service-template/gen/greet/v1"
 	"github.com/pj-hoakari/go-service-template/gen/greet/v1/greetv1connect"
@@ -29,16 +29,16 @@ var errInternal = errors.New("internal error")
 // service answers an internal failure the same way.
 func InternalError(ctx context.Context, err error) *connectrpc.Error {
 	if errors.Is(err, context.Canceled) {
-		return connectrpc.NewError(connectrpc.CodeCanceled, err)
+		return connectrpc.NewError(connectrpc.CodeCanceled, err.Error()).WithCause(err)
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		return connectrpc.NewError(connectrpc.CodeDeadlineExceeded, err)
+		return connectrpc.NewError(connectrpc.CodeDeadlineExceeded, err.Error()).WithCause(err)
 	}
 
 	slog.ErrorContext(ctx, "internal error", "error", err)
 
-	return connectrpc.NewError(connectrpc.CodeInternal, errInternal) //nolint:forbidigo // the one place that builds internal errors
+	return connectrpc.NewError(connectrpc.CodeInternal, errInternal.Error()).WithCause(errInternal) //nolint:forbidigo // the one place that builds internal errors
 }
 
 // Service is the Connect transport implementation of GreetService.
@@ -54,19 +54,19 @@ func NewService(greetService application.GreetUseCases) *Service {
 	}
 }
 
-func (s *Service) Greet(ctx context.Context, req *connectrpc.Request[greetv1.GreetRequest]) (*connectrpc.Response[greetv1.GreetResponse], error) {
+func (s *Service) Greet(ctx context.Context, req *greetv1.GreetRequest) (*greetv1.GreetResponse, error) {
 	greeting, err := s.greetService.Greet(ctx, application.GreetInput{
-		Name: req.Msg.GetName(),
+		Name: req.GetName(),
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrGreetingNameRequired) {
-			return nil, connectrpc.NewError(connectrpc.CodeInvalidArgument, err)
+			return nil, connectrpc.NewError(connectrpc.CodeInvalidArgument, err.Error()).WithCause(err)
 		}
 
 		return nil, InternalError(ctx, err)
 	}
 
-	return connectrpc.NewResponse(&greetv1.GreetResponse{
+	return &greetv1.GreetResponse{
 		Greeting: greeting.Message(),
-	}), nil
+	}, nil
 }
