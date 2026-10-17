@@ -270,7 +270,7 @@ GreetService のルート登録関数は `RoutesWithJWTSettings(greetService, se
 内部エラーは `internal` と固定メッセージ `internal error` だけを返し、原因はサーバー側のログにのみ記録する  
 そのログは `message` が `internal error`、`error` 属性が原因という構造化レコードで、トレースが有効なときはトレースのフィールドも付く（「ログ」を参照）  
 クライアント都合の中断・締め切り超過は `canceled`／`deadline_exceeded` として返し、サーバー側のログには記録しない  
-ハンドラの内部エラーは `InternalError(ctx, err)`（`internal/infra/connect/service.go`）で組み立てる（他の transport からも同じ関数を使う）  
+ハンドラの内部エラーは `InternalError(ctx, err)`（`internal/infra/connect/errors.go`）で組み立てる（他の transport からも同じ関数を使う）  
 エラーメッセージには内部主キー・テナント名・ユーザー ID などの内部識別子を含めない  
 `connectrpc.CodeInternal` の直接使用は golangci-lint の `forbidigo` で禁止しており、許可するのは `InternalError` の中だけである
 
