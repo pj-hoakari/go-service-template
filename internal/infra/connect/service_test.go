@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -41,6 +42,24 @@ func TestServiceGreetRejectsMissingName(t *testing.T) {
 	_, err := service.Greet(context.Background(), &greetv1.GreetRequest{})
 	if got, want := connectrpc.CodeOf(err), connectrpc.CodeInvalidArgument; got != want {
 		t.Fatalf("Greet() error code = %v, want %v", got, want)
+	}
+}
+
+func TestServiceGreetAnswersAClientErrorWithAFixedMessage(t *testing.T) {
+	t.Parallel()
+
+	for name, cause := range map[string]error{
+		"wrapped": fmt.Errorf("build greeting: %w", domain.ErrGreetingNameRequired),
+		"joined":  errors.Join(errors.New("ERROR: deadlock detected (SQLSTATE 40P01)"), domain.ErrGreetingNameRequired),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			service := NewService(failingGreetService{err: cause})
+
+			_, err := service.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
+			assertConnectError(t, err, connectrpc.CodeInvalidArgument, "name is required")
+		})
 	}
 }
 
@@ -94,21 +113,47 @@ func TestInternalErrorHidesDetail(t *testing.T) {
 	}
 }
 
-// TestCanceledRequestIsNotLogged pins a client that goes away to canceled: it
-// is not a server fault, so nothing is logged. It shares the process-wide
-// logger with TestInternalErrorHidesDetail and so cannot run in parallel
-// either.
+// TestCanceledRequestIsNotLogged pins a client that goes away to canceled or
+// deadline_exceeded: it is not a server fault, so nothing is logged. It shares
+// the process-wide logger with TestInternalErrorHidesDetail and so cannot run
+// in parallel either.
 func TestCanceledRequestIsNotLogged(t *testing.T) {
-	logs := captureLog(t)
-	service := NewService(failingGreetService{err: context.Canceled})
+	for _, tc := range []struct {
+		cause   error
+		code    connectrpc.Code
+		message string
+	}{
+		{fmt.Errorf("find greeting: %w", context.Canceled), connectrpc.CodeCanceled, "canceled"},
+		{fmt.Errorf("find greeting: %w", context.DeadlineExceeded), connectrpc.CodeDeadlineExceeded, "deadline exceeded"},
+	} {
+		t.Run(tc.code.String(), func(t *testing.T) {
+			logs := captureLog(t)
+			service := NewService(failingGreetService{err: tc.cause})
 
-	_, err := service.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
-	if got, want := connectrpc.CodeOf(err), connectrpc.CodeCanceled; got != want {
-		t.Fatalf("Greet() error code = %v, want %v", got, want)
+			_, err := service.Greet(context.Background(), &greetv1.GreetRequest{Name: "Ada"})
+			assertConnectError(t, err, tc.code, tc.message)
+
+			if logs.Len() != 0 {
+				t.Errorf("log = %q, want nothing logged", logs.String())
+			}
+		})
+	}
+}
+
+func assertConnectError(t *testing.T, err error, code connectrpc.Code, message string) {
+	t.Helper()
+
+	var connectErr *connectrpc.Error
+	if !errors.As(err, &connectErr) {
+		t.Fatalf("Greet() error = %v, want a Connect error", err)
 	}
 
-	if logs.Len() != 0 {
-		t.Errorf("log = %q, want nothing logged", logs.String())
+	if got := connectErr.Code(); got != code {
+		t.Errorf("Code() = %v, want %v", got, code)
+	}
+
+	if got := connectErr.Message(); got != message {
+		t.Errorf("Message() = %q, want %q", got, message)
 	}
 }
 
