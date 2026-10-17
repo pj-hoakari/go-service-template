@@ -23,6 +23,12 @@
 				"golang-migrate/migrate"
 			],
 			"enabled": true
+		},
+		{
+			"matchBaseBranches": ["with-db"],
+			"matchFileNames": [".github/workflows/publish-image.yml"],
+			"matchPackageNames": ["pj-hoakari/actions"],
+			"enabled": true
 		}
 	]
 }
