@@ -1,8 +1,45 @@
 services:
+    postgres:
+        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER:?copy .env.example to .env}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?copy .env.example to .env}
+            POSTGRES_DB: ${POSTGRES_DB:?copy .env.example to .env}
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres-data:/var/lib/postgresql
+
+    migrate:
+        build:
+            context: .
+            target: migrate
+        command:
+            [
+                "-database",
+                "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable",
+                "up",
+            ]
+        depends_on:
+            postgres:
+                condition: service_healthy
+
     server:
         build:
             context: .
         environment:
+            DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
             SERVER_ADDR: :8080
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
         ports:
             - "8080:8080"
+
+volumes:
+    postgres-data:
