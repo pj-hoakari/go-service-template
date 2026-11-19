@@ -18,8 +18,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/pj-hoakari/internal-jwt-handling v0.5.0
-	github.com/pj-hoakari/protoc-gen-authz-go v0.4.1
+	github.com/pj-hoakari/internal-jwt-handling v0.5.1
+	github.com/pj-hoakari/protoc-gen-authz-go v0.4.2
 	github.com/testcontainers/testcontainers-go v0.45.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.45.0
 	go.opentelemetry.io/otel v1.47.0
